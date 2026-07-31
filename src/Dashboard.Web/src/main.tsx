@@ -30,11 +30,11 @@ import {
   restoreSecret,
   writeSecret,
 } from "./api/client";
-import type { ProjectResponse, SecretVersionResponse } from "./api/generated";
+import type { ProjectResponse, SecretVersionResponse, SessionResponse } from "./api/generated";
 
 type Values = Record<string, string>;
 
-function Login({ onLogin }: { onLogin: () => void }) {
+function Login({ onLogin }: { onLogin: (session: SessionResponse) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -43,8 +43,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
     event.preventDefault();
     setError("");
     try {
-      await login(username, password);
-      onLogin();
+      onLogin(await login(username, password));
     } catch {
       setError("Sign in failed.");
     }
@@ -79,7 +78,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-function Dashboard({ onLogout }: { onLogout: () => void }) {
+function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: () => void }) {
   const [project, setProject] = useState("thorneai");
   const [environment, setEnvironment] = useState("development");
   const [path, setPath] = useState("backend");
@@ -170,7 +169,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   return (
     <Container maxWidth="lg">
       <Toolbar disableGutters sx={{ justifyContent: "space-between", py: 2 }}>
-        <Typography variant="h5">OpenBao Secrets</Typography>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Typography variant="h5">OpenBao Secrets</Typography>
+          <Chip size="small" label={`Session expires ${new Date(session.expiresAt).toLocaleString()}`} />
+        </Stack>
         <Button
           onClick={async () => {
             await logout();
@@ -294,11 +296,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 }
 
 function App() {
-  const [authenticated, setAuthenticated] = useState(false);
-  return authenticated ? (
-    <Dashboard onLogout={() => setAuthenticated(false)} />
+  const [session, setSession] = useState<SessionResponse | null>(null);
+  return session ? (
+    <Dashboard session={session} onLogout={() => setSession(null)} />
   ) : (
-    <Login onLogin={() => setAuthenticated(true)} />
+    <Login onLogin={setSession} />
   );
 }
 

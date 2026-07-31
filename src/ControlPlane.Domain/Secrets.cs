@@ -44,6 +44,7 @@ public sealed record SecretPath
 
 public sealed record SecretDocument(IReadOnlyDictionary<string, string> Values, int Version);
 public sealed record SecretVersion(int Version, DateTimeOffset? DeletedAt, bool Destroyed);
+public sealed record SecretEntry(string Name, bool IsFolder);
 public sealed record OpenBaoSession(
     string Token,
     string Accessor,
@@ -70,6 +71,19 @@ public sealed record MachineIdentity(
     string Environment,
     int? TokenTtlSeconds,
     int? TokenUses);
+
+public sealed record AuditEvent(
+    DateTimeOffset? Time,
+    string Type,
+    string Operation,
+    string Path,
+    string Actor);
+
+public sealed record DynamicDatabaseCredential(
+    string Username,
+    string Password,
+    string LeaseId,
+    DateTimeOffset ExpiresAt);
 
 file static class IdentifierValidation
 {

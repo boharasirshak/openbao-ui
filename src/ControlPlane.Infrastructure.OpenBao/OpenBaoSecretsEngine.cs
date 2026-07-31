@@ -61,6 +61,26 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<IReadOnlyList<SecretEntry>> ListAsync(
+        ProjectId project,
+        EnvironmentId environment,
+        string? folder,
+        CancellationToken cancellationToken)
+    {
+        var suffix = string.IsNullOrWhiteSpace(folder) ? string.Empty : $"/{SecretPath.Parse(folder)}";
+        using var request = CreateRequest(HttpMethod.Get, $"v1/{project}/metadata/{environment}{suffix}?list=true");
+        using var response = await client.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return [];
+        }
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadFromJsonAsync<ListResponse>(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("OpenBao returned invalid list data.");
+        return payload.Data?.Keys.Select(key => new SecretEntry(key.TrimEnd('/'), key.EndsWith('/'))).ToList() ?? [];
+    }
+
     public async Task<IReadOnlyList<SecretVersion>> ListVersionsAsync(
         ProjectId project,
         EnvironmentId environment,
@@ -79,7 +99,7 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
             ?? throw new InvalidOperationException("OpenBao returned invalid metadata.");
         return payload.Data?.Versions.Values.Select(version => new SecretVersion(
             version.Version,
-            version.DeletionTime,
+            DateTimeOffset.TryParse(version.DeletionTime, out var deletedAt) ? deletedAt : null,
             version.Destroyed)).ToList() ?? [];
     }
 
@@ -135,6 +155,8 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
         [property: JsonPropertyName("versions")] IReadOnlyDictionary<string, MetadataVersion> Versions);
     private sealed record MetadataVersion(
         [property: JsonPropertyName("version")] int Version,
-        [property: JsonPropertyName("deletion_time")] DateTimeOffset? DeletionTime,
+        [property: JsonPropertyName("deletion_time")] string? DeletionTime,
         [property: JsonPropertyName("destroyed")] bool Destroyed);
+    private sealed record ListResponse([property: JsonPropertyName("data")] ListPayload? Data);
+    private sealed record ListPayload([property: JsonPropertyName("keys")] IReadOnlyList<string> Keys);
 }

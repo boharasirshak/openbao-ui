@@ -70,6 +70,11 @@ builder.Services.AddScoped<IProjectService, OpenBaoProjectService>();
 builder.Services.AddScoped<IIdentityService, OpenBaoIdentityService>();
 builder.Services.AddScoped<IPolicyService, OpenBaoPolicyService>();
 builder.Services.AddScoped<IMachineIdentityService, OpenBaoMachineIdentityService>();
+builder.Services.AddScoped<IAuditService, OpenBaoAuditService>();
+builder.Services.AddHttpClient<IDatabaseCredentialService, OpenBaoDatabaseCredentialService>((serviceProvider, client) =>
+{
+    client.BaseAddress = serviceProvider.GetRequiredService<IOptions<OpenBaoOptions>>().Value.Address;
+}).AddStandardResilienceHandler();
 
 var app = builder.Build();
 app.UseExceptionHandler(errorApplication =>
@@ -90,6 +95,13 @@ app.Use(async (context, next) =>
     context.Response.Headers.ContentSecurityPolicy =
         "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'";
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    if (context.Request.Path.StartsWithSegments("/api"))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+    }
     await next();
 });
 
@@ -234,6 +246,11 @@ administration.MapPost(
         }
     });
 
+administration.MapGet(
+    "/audit/recent",
+    async (int? limit, IAuditService service, CancellationToken cancellationToken) =>
+        Results.Ok(await service.RecentAsync(limit ?? 100, cancellationToken)));
+
 administration.MapDelete(
     "/projects/{project}",
     async (string project, IProjectService service, CancellationToken cancellationToken) =>
@@ -264,6 +281,19 @@ administration.MapPost(
     async (CreateMemberRequest request, IIdentityService service, CancellationToken cancellationToken) =>
     {
         await service.CreateAsync(request.Username, request.Password, request.Policies, cancellationToken);
+        return Results.NoContent();
+    });
+
+administration.MapPut(
+    "/members/{username}",
+    async (string username, UpdateMemberRequest request, IIdentityService service, CancellationToken cancellationToken) =>
+    {
+        if (!string.IsNullOrWhiteSpace(request.Password))
+        {
+            await service.ResetPasswordAsync(username, request.Password, cancellationToken);
+        }
+
+        await service.SetPoliciesAsync(username, request.Policies, cancellationToken);
         return Results.NoContent();
     });
 
@@ -351,6 +381,49 @@ administration.MapPost(
 
 var secrets = app.MapGroup("/api/projects/{project}/environments/{environment}/secrets")
     .RequireAuthorization();
+
+app.MapGet(
+    "/api/database/credentials/{role}",
+    async (string role, IDatabaseCredentialService service, CancellationToken cancellationToken) =>
+    {
+        try
+        {
+            var credential = await service.ReadAsync(role, cancellationToken);
+            return Results.Ok(new DatabaseCredentialResponse(
+                credential.Username,
+                credential.Password,
+                credential.LeaseId,
+                credential.ExpiresAt));
+        }
+        catch (ArgumentException)
+        {
+            return Results.BadRequest();
+        }
+    }).RequireAuthorization();
+
+secrets.MapGet(
+    "/list/{**folder}",
+    async (
+        string project,
+        string environment,
+        string? folder,
+        ISecretsEngine secretsEngine,
+        CancellationToken cancellationToken) =>
+    {
+        try
+        {
+            var entries = await secretsEngine.ListAsync(
+                ProjectId.Parse(project),
+                EnvironmentId.Parse(environment),
+                folder,
+                cancellationToken);
+            return Results.Ok(entries);
+        }
+        catch (ArgumentException)
+        {
+            return Results.BadRequest();
+        }
+    });
 
 secrets.MapGet(
     "/versions/{**path}",

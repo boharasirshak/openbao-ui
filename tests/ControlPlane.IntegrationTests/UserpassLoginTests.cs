@@ -190,6 +190,29 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         Assert.NotEmpty(secretId);
     }
 
+    [Fact]
+    public async Task User_creation_creates_an_identity_entity_and_offboarding_removes_login()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var options = Options.Create(new OpenBaoOptions
+        {
+            Address = _address,
+            ControlToken = "test-root",
+        });
+        var identities = new OpenBaoIdentityService(new OpenBaoAdministrativeClient(client, options));
+
+        await identities.CreateAsync("bob", "bob-password", ["default"], CancellationToken.None);
+        var members = await identities.ListAsync(CancellationToken.None);
+        var bob = Assert.Single(members, member => member.Username == "bob");
+        Assert.NotEmpty(bob.EntityId);
+
+        await identities.DisableAsync("bob", CancellationToken.None);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new OpenBaoSessionService(
+                client,
+                options)
+            .LoginAsync("bob", "bob-password", CancellationToken.None));
+    }
+
     public Task DisposeAsync() => _openBao.DisposeAsync().AsTask();
 
     private sealed class FixedTokenAccessor(string token) : IOpenBaoTokenAccessor

@@ -4,6 +4,7 @@ using System.Text.Json;
 using ControlPlane.Application;
 using ControlPlane.Domain;
 using ControlPlane.Infrastructure.OpenBao;
+using Microsoft.Extensions.Options;
 
 namespace ControlPlane.UnitTests;
 
@@ -67,6 +68,33 @@ public sealed class DomainAndSecretsEngineTests
         Assert.Equal(HttpMethod.Post, handler.LastRequest?.Method);
         var payload = JsonDocument.Parse(handler.LastBody!);
         Assert.Equal(7, payload.RootElement.GetProperty("options").GetProperty("cas").GetInt32());
+    }
+
+    [Fact]
+    public async Task Audit_projection_never_returns_secret_payloads()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(
+                path,
+                "{\"time\":\"2026-01-01T00:00:00Z\",\"type\":\"request\",\"auth\":{\"display_name\":\"alice\"},\"request\":{\"operation\":\"read\",\"path\":\"thorneai/data/development/backend\",\"data\":{\"API_KEY\":\"secret-value\"}}}");
+            var service = new OpenBaoAuditService(Options.Create(new OpenBaoOptions
+            {
+                Address = new Uri("http://openbao/"),
+                AuditLogPath = path,
+            }));
+
+            var events = await service.RecentAsync(10, CancellationToken.None);
+
+            var auditEvent = Assert.Single(events);
+            Assert.Equal("thorneai/data/development/backend", auditEvent.Path);
+            Assert.DoesNotContain("secret-value", auditEvent.ToString());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     private static OpenBaoSecretsEngine CreateEngine(RecordingHandler handler) =>
