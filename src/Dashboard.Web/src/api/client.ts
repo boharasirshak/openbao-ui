@@ -107,6 +107,23 @@ export async function restoreSecret(
   if (!response.ok) throw new Error("Secret restore failed.");
 }
 
+export async function undeleteSecret(
+  project: string,
+  environment: string,
+  path: string,
+  version: number,
+): Promise<void> {
+  const response = await unsafeRequest(
+    `/api/projects/${encodeURIComponent(project)}/environments/${encodeURIComponent(environment)}/secrets/undelete/${path.split("/").map(encodeURIComponent).join("/")}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version }),
+    },
+  );
+  if (!response.ok) throw new Error("Secret undelete failed.");
+}
+
 export async function importSecrets(
   project: string,
   environment: string,

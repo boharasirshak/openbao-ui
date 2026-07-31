@@ -28,6 +28,7 @@ import {
   logout,
   readSecret,
   restoreSecret,
+  undeleteSecret,
   writeSecret,
 } from "./api/client";
 import type { ProjectResponse, SecretVersionResponse, SessionResponse } from "./api/generated";
@@ -132,6 +133,12 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
     await restoreSecret(project, environment, path, versionToRestore);
     await load();
     setMessage(`Restored version ${versionToRestore}.`);
+  }
+
+  async function undelete(versionToRestore: number) {
+    await undeleteSecret(project, environment, path, versionToRestore);
+    await load();
+    setMessage(`Undeleted version ${versionToRestore}.`);
   }
 
   async function importFile(file: File) {
@@ -288,7 +295,8 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
               <Stack key={item.version} direction="row" spacing={2} alignItems="center">
                 <Typography>Version {item.version}</Typography>
                 <Typography color="text.secondary">{item.deletedAt ?? "active"}</Typography>
-                <Button onClick={() => restore(item.version)}>Restore</Button>
+                {item.deletedAt && <Button onClick={() => undelete(item.version)}>Undelete</Button>}
+                {!item.deletedAt && <Button onClick={() => restore(item.version)}>Restore</Button>}
               </Stack>
             ))}
           </>
