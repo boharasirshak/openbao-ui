@@ -337,9 +337,17 @@ administration.MapPost(
     });
 
 administration.MapPost(
-    "/machine-identities/{roleId}/secret-id",
-    async (string roleId, IMachineIdentityService service, CancellationToken cancellationToken) =>
-        Results.Ok(new { secretId = await service.GenerateSecretIdAsync(roleId, cancellationToken) }));
+    "/machine-identities/{roleName}/secret-id",
+    async (string roleName, IMachineIdentityService service, CancellationToken cancellationToken) =>
+        Results.Ok(new { secretId = await service.GenerateSecretIdAsync(roleName, cancellationToken) }));
+
+administration.MapPost(
+    "/machine-identities/{roleName}/secret-id/revoke",
+    async (string roleName, IMachineIdentityService service, CancellationToken cancellationToken) =>
+    {
+        await service.RevokeSecretIdsAsync(roleName, cancellationToken);
+        return Results.NoContent();
+    });
 
 var secrets = app.MapGroup("/api/projects/{project}/environments/{environment}/secrets")
     .RequireAuthorization();

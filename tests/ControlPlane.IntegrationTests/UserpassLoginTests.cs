@@ -75,6 +75,99 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         Assert.Equal(1, document.Version);
     }
 
+    [Fact]
+    public async Task Development_policy_cannot_read_production()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var session = await new OpenBaoSessionService(
+            client,
+            Options.Create(new OpenBaoOptions { Address = _address }))
+            .LoginAsync("alice", "correct-password", CancellationToken.None);
+        var engine = new OpenBaoSecretsEngine(client, new FixedTokenAccessor(session.Token));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => engine.ReadAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("production"),
+            SecretPath.Parse("backend"),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Wrong_password_is_rejected_without_an_OpenBao_session()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var service = new OpenBaoSessionService(
+            client,
+            Options.Create(new OpenBaoOptions { Address = _address }));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.LoginAsync(
+            "alice",
+            "wrong-password",
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Revoked_token_cannot_read_a_secret()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var sessions = new OpenBaoSessionService(
+            client,
+            Options.Create(new OpenBaoOptions { Address = _address }));
+        var session = await sessions.LoginAsync("alice", "correct-password", CancellationToken.None);
+        var engine = new OpenBaoSecretsEngine(client, new FixedTokenAccessor(session.Token));
+
+        await sessions.RevokeAsync(session.Token, CancellationToken.None);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => engine.ReadAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("development"),
+            SecretPath.Parse("backend"),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Disabled_user_cannot_log_in()
+    {
+        using var admin = new HttpClient { BaseAddress = _address };
+        admin.DefaultRequestHeaders.Add("X-Vault-Token", "test-root");
+        var disable = await admin.DeleteAsync("v1/auth/userpass/users/alice");
+        disable.EnsureSuccessStatusCode();
+
+        var service = new OpenBaoSessionService(
+            new HttpClient { BaseAddress = _address },
+            Options.Create(new OpenBaoOptions { Address = _address }));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.LoginAsync(
+            "alice",
+            "correct-password",
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Project_creation_is_idempotent_and_creates_a_kv_mount()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var options = Options.Create(new OpenBaoOptions
+        {
+            Address = _address,
+            ControlToken = "test-root",
+        });
+        var service = new OpenBaoProjectService(new OpenBaoAdministrativeClient(client, options), options);
+
+        var first = await service.CreateAsync(
+            ProjectId.Parse("job-engine"),
+            "Job engine secrets",
+            CancellationToken.None);
+        var second = await service.CreateAsync(
+            ProjectId.Parse("job-engine"),
+            "Job engine secrets",
+            CancellationToken.None);
+        var projects = await service.ListAsync(CancellationToken.None);
+
+        Assert.Equal(first.Id, second.Id);
+        Assert.Contains(projects, project => project.Id == ProjectId.Parse("job-engine"));
+        Assert.Equal(3, first.Environments.Count);
+    }
+
     public Task DisposeAsync() => _openBao.DisposeAsync().AsTask();
 
     private sealed class FixedTokenAccessor(string token) : IOpenBaoTokenAccessor

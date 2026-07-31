@@ -3,19 +3,29 @@ using ControlPlane.Domain;
 
 namespace ControlPlane.Infrastructure.OpenBao;
 
-public sealed class OpenBaoMachineIdentityService(OpenBaoAdministrativeClient client) : IMachineIdentityService
+public sealed class OpenBaoMachineIdentityService(
+    OpenBaoAdministrativeClient client,
+    IPolicyService policyService) : IMachineIdentityService
 {
     public Task<IReadOnlyList<MachineIdentity>> ListAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<MachineIdentity>>([]);
 
     public async Task<MachineIdentity> CreateAsync(MachineIdentity identity, CancellationToken cancellationToken)
     {
-        var roleId = identity.RoleId;
+        var policyName = $"{identity.Name}-runtime";
+        await policyService.CreateRoleAsync(
+            new Role(policyName, identity.Project, identity.Environment, ReadOnly: true),
+            cancellationToken);
+        if (await client.GetAsync("v1/sys/auth/approle", cancellationToken) is null)
+        {
+            await client.PostAsync("v1/sys/auth/approle", new { type = "approle" }, cancellationToken);
+        }
+
         await client.PostAsync(
             $"v1/auth/approle/role/{Uri.EscapeDataString(identity.Name)}",
             new
             {
-                token_policies = new[] { roleId },
+                token_policies = new[] { policyName },
                 token_ttl = identity.TokenTtlSeconds,
                 secret_id_num_uses = identity.TokenUses,
             },
@@ -23,7 +33,8 @@ public sealed class OpenBaoMachineIdentityService(OpenBaoAdministrativeClient cl
         var role = await client.GetAsync(
             $"v1/auth/approle/role/{Uri.EscapeDataString(identity.Name)}/role-id",
             cancellationToken);
-        var resolvedRoleId = role?.RootElement.GetProperty("data").GetProperty("role_id").GetString() ?? roleId;
+        var resolvedRoleId = role?.RootElement.GetProperty("data").GetProperty("role_id").GetString()
+            ?? identity.RoleId;
         return identity with { RoleId = resolvedRoleId };
     }
 
@@ -36,9 +47,22 @@ public sealed class OpenBaoMachineIdentityService(OpenBaoAdministrativeClient cl
         return response.RootElement.GetProperty("data").GetProperty("secret_id").GetString()!;
     }
 
-    public Task RevokeSecretIdsAsync(string roleId, CancellationToken cancellationToken) =>
-        client.PostAsync(
-            $"v1/auth/approle/role/{Uri.EscapeDataString(roleId)}/secret-id/destroy",
-            new { secret_id = roleId },
+    public async Task RevokeSecretIdsAsync(string roleId, CancellationToken cancellationToken)
+    {
+        var response = await client.GetAsync(
+            $"v1/auth/approle/role/{Uri.EscapeDataString(roleId)}/secret-id?list=true",
             cancellationToken);
+        if (response?.RootElement.GetProperty("data").TryGetProperty("keys", out var keys) != true)
+        {
+            return;
+        }
+
+        foreach (var accessor in keys.EnumerateArray().Select(value => value.GetString()!))
+        {
+            await client.PostAsync(
+                $"v1/auth/approle/role/{Uri.EscapeDataString(roleId)}/secret-id-accessor/destroy",
+                new { secret_id_accessor = accessor },
+                cancellationToken);
+        }
+    }
 }

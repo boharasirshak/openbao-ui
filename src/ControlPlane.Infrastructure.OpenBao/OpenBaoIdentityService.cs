@@ -41,10 +41,7 @@ public sealed class OpenBaoIdentityService(OpenBaoAdministrativeClient client) :
             cancellationToken);
 
     public Task DisableAsync(string username, CancellationToken cancellationToken) =>
-        client.PostAsync(
-            $"v1/auth/userpass/users/{Uri.EscapeDataString(username)}",
-            new { disabled = true },
-            cancellationToken);
+        DeleteAsync(username, cancellationToken);
 
     public Task DeleteAsync(string username, CancellationToken cancellationToken) =>
         client.DeleteAsync(
