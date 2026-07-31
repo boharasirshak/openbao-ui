@@ -15,6 +15,7 @@ const string OpenBaoTokenClaim = "openbao_token";
 const string OpenBaoExpirationClaim = "openbao_expires_at";
 
 var builder = WebApplication.CreateBuilder(args);
+var isLocalDevelopment = builder.Environment.IsEnvironment("LocalDevelopment");
 
 builder.Services.AddOpenApi();
 builder.Services.Configure<OpenBaoOptions>(
@@ -57,7 +58,9 @@ builder.Services.AddAntiforgery(options =>
 {
     options.HeaderName = "X-CSRF-TOKEN";
     options.Cookie.HttpOnly = true;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = isLocalDevelopment
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
     options.Cookie.SameSite = SameSiteMode.Strict;
 });
 builder.Services
@@ -66,7 +69,9 @@ builder.Services
     {
         options.Cookie.Name = "openbao_session";
         options.Cookie.HttpOnly = true;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.SecurePolicy = isLocalDevelopment
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.SlidingExpiration = false;
         options.Events.OnRedirectToLogin = context =>
@@ -108,7 +113,10 @@ app.UseExceptionHandler(errorApplication =>
         await context.Response.WriteAsJsonAsync(new { error = "Request failed." });
     });
 });
-app.UseHttpsRedirection();
+if (!isLocalDevelopment)
+{
+    app.UseHttpsRedirection();
+}
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();

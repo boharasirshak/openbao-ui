@@ -10,6 +10,8 @@ dotnet run --project src/ControlPlane.Api/ControlPlane.Api.csproj
 cd src/Dashboard.Web && npm install && npm run dev
 ```
 
+For the local browser dashboard, run the API with `ASPNETCORE_ENVIRONMENT=LocalDevelopment` on port `5000`, then open `http://localhost:5173`. This profile is only for disposable local data; normal development and production retain HTTPS-only cookies.
+
 The disposable OpenBao bootstrap creates `admin` / `admin-only-change-me`. Change or remove these credentials before using any shared environment. The development listener is HTTP by design; production must use HTTPS and a separately managed control-plane identity.
 
 ## CLI
