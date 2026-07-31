@@ -36,6 +36,12 @@ public sealed class ApiSecurityTests
         csrfResponse.EnsureSuccessStatusCode();
         var csrf = await csrfResponse.Content.ReadFromJsonAsync<CsrfResponse>();
         Assert.NotNull(csrf);
+        var csrfCookie = Assert.Single(
+            csrfResponse.Headers.GetValues("Set-Cookie"),
+            cookie => cookie.Contains("Antiforgery", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("httponly", csrfCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("secure", csrfCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", csrfCookie, StringComparison.OrdinalIgnoreCase);
 
         using var withoutCsrf = await client.PostAsJsonAsync(
             "/api/auth/login",

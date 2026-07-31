@@ -80,6 +80,12 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         Assert.Equal("secret-value", document.Values["DATABASE_URL"]);
         Assert.Equal(1, document.Version);
         Assert.Equal("Backend development credentials", document.Description);
+        var entries = await engine.ListAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("development"),
+            folder: null,
+            CancellationToken.None);
+        Assert.Contains(entries, entry => entry.Name == "backend" && !entry.IsFolder);
     }
 
     [Fact]
