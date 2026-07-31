@@ -75,6 +75,8 @@ public sealed class OpenBaoProjectService(
             await CreatePolicyAsync(project, environment, readOnly: false, cancellationToken);
         }
 
+        await CreateProjectAdminPolicyAsync(project, cancellationToken);
+
         return new Project(project, description, DefaultEnvironments);
     }
 
@@ -87,6 +89,8 @@ public sealed class OpenBaoProjectService(
             await client.DeleteAsync($"v1/sys/policies/acl/{project}-{environment}-viewer", cancellationToken);
             await client.DeleteAsync($"v1/sys/policies/acl/{project}-{environment}-editor", cancellationToken);
         }
+
+        await client.DeleteAsync($"v1/sys/policies/acl/{project}-admin", cancellationToken);
     }
 
     private Task CreatePolicyAsync(
@@ -101,6 +105,18 @@ public sealed class OpenBaoProjectService(
             + $"path \"{project}/metadata/{environment}/*\" {{ capabilities = [\"read\", \"list\"] }}";
         return client.PutAsync(
             $"v1/sys/policies/acl/{project}-{environment}-{suffix}",
+            new { policy },
+            cancellationToken);
+    }
+
+    private Task CreateProjectAdminPolicyAsync(
+        ProjectId project,
+        CancellationToken cancellationToken)
+    {
+        var policy = $"path \"{project}/data/*\" {{ capabilities = [\"create\", \"read\", \"update\", \"patch\", \"delete\", \"list\"] }}\n"
+            + $"path \"{project}/metadata/*\" {{ capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }}";
+        return client.PutAsync(
+            $"v1/sys/policies/acl/{project}-admin",
             new { policy },
             cancellationToken);
     }

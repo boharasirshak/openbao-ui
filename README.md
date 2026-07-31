@@ -15,7 +15,8 @@ The disposable OpenBao bootstrap creates `admin` / `admin-only-change-me`. Chang
 ## CLI
 
 ```bash
-dotnet run --project src/ControlPlane.Cli -- login --username alice --password '…'
+dotnet run --project src/ControlPlane.Cli -- login --username alice
+# Or for automation: printf '%s' "$PASSWORD" | dotnet run --project src/ControlPlane.Cli -- login --username alice --password-stdin
 dotnet run --project src/ControlPlane.Cli -- run --project thorneai --env development --path backend -- pnpm dev
 dotnet run --project src/ControlPlane.Cli -- export --project thorneai --env development --path backend
 dotnet run --project src/ControlPlane.Cli -- import .env --project thorneai --env development --path backend

@@ -251,6 +251,44 @@ public sealed class UserpassLoginTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Project_admin_policy_cannot_modify_another_project()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var options = Options.Create(new OpenBaoOptions
+        {
+            Address = _address,
+            ControlToken = "test-root",
+        });
+        var admin = new OpenBaoAdministrativeClient(client, options);
+        var projectService = new OpenBaoProjectService(admin, options);
+        await projectService.CreateAsync(ProjectId.Parse("scoped-project"), "Scoped", CancellationToken.None);
+        await admin.PostAsync(
+            "v1/auth/userpass/users/scoped-admin",
+            new { password = "scoped-password", policies = new[] { "scoped-project-admin" } },
+            CancellationToken.None);
+
+        var session = await new OpenBaoSessionService(client, options)
+            .LoginAsync("scoped-admin", "scoped-password", CancellationToken.None);
+        var engine = new OpenBaoSecretsEngine(client, new FixedTokenAccessor(session.Token));
+
+        await engine.WriteAsync(
+            ProjectId.Parse("scoped-project"),
+            EnvironmentId.Parse("development"),
+            SecretPath.Parse("backend"),
+            new SecretDocument(new Dictionary<string, string> { ["KEY"] = "scoped" }, 0),
+            expectedVersion: 0,
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => engine.WriteAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("development"),
+            SecretPath.Parse("backend"),
+            new SecretDocument(new Dictionary<string, string> { ["KEY"] = "cross-project" }, 0),
+            expectedVersion: 0,
+            CancellationToken.None));
+    }
+
+    [Fact]
     public async Task AppRole_machine_identity_gets_a_restricted_secret_id()
     {
         using var client = new HttpClient { BaseAddress = _address };

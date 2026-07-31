@@ -106,6 +106,7 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
   const [values, setValues] = useState<Values>({});
   const [bulkValues, setBulkValues] = useState("{}");
   const [description, setDescription] = useState("");
+  const [bulkRevealed, setBulkRevealed] = useState(false);
   const [version, setVersion] = useState(0);
   const [versions, setVersions] = useState<SecretVersionResponse[]>([]);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
@@ -139,6 +140,7 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
       setDescription(secretQuery.data.document.description ?? "");
       setVersions(secretQuery.data.versions);
       setRevealed({});
+      setBulkRevealed(false);
     }
     if (secretQuery.error) {
       setError(
@@ -324,13 +326,28 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
             ))}
           </Stack>
         )}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <Typography variant="subtitle1">Bulk JSON editor</Typography>
+          <Button size="small" onClick={() => setBulkRevealed((current) => !current)}>
+            {bulkRevealed ? "Mask values" : "Reveal values"}
+          </Button>
+        </Stack>
         <TextField
-          label="Bulk JSON editor"
-          value={bulkValues}
+          aria-label="Bulk JSON editor"
+          value={
+            bulkRevealed
+              ? bulkValues
+              : JSON.stringify(
+                  Object.fromEntries(Object.keys(values).map((key) => [key, "••••••••"])),
+                  null,
+                  2,
+                )
+          }
           onChange={(event) => setBulkValues(event.target.value)}
           multiline
           minRows={5}
           fullWidth
+          disabled={!bulkRevealed}
           sx={{ mb: 2 }}
         />
         <Stack spacing={1}>
