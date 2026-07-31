@@ -1,7 +1,7 @@
 namespace ControlPlane.Contracts;
 
 public sealed record LoginRequest(string Username, string Password);
-public sealed record SessionResponse(DateTimeOffset ExpiresAt);
+public sealed record SessionResponse(DateTimeOffset ExpiresAt, IReadOnlyList<string>? Policies = null);
 
 public sealed record ProjectResponse(string Id, string Description, IReadOnlyList<string> Environments);
 public sealed record CreateProjectRequest(string Description);

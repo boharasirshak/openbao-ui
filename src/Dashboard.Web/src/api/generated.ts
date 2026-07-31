@@ -243,11 +243,9 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
-          content: {
-            "application/json": components["schemas"]["MachineIdentityResponse"];
-          };
+        /** @description No Content */
+        204: {
+          content: never;
         };
       };
     };
@@ -287,7 +285,9 @@ export interface paths {
       responses: {
         /** @description OK */
         200: {
-          content: never;
+          content: {
+            "application/json": components["schemas"]["MachineIdentityResponse"];
+          };
         };
       };
     };
@@ -614,6 +614,7 @@ export interface components {
     SessionResponse: {
       /** Format: date-time */
       expiresAt: string;
+      policies?: null | string[];
     };
     UpdateMemberRequest: {
       password: string;

@@ -191,7 +191,7 @@ app.MapPost(
                         IsPersistent = false,
                     });
 
-                return Results.Ok(new SessionResponse(session.ExpiresAt));
+                return Results.Ok(new SessionResponse(session.ExpiresAt, session.Policies));
             }
             catch (UnauthorizedAccessException)
             {

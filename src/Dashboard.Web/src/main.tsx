@@ -22,9 +22,19 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
+  createMember,
+  createProject,
   deleteSecret,
+  deleteProject,
+  disableMember,
+  getSession,
   importSecrets,
+  listAuditEvents,
   listAdminProjects,
+  listMachineIdentities,
+  listMembers,
+  listSecretEntries,
+  listRoles,
   listVersions,
   login,
   logout,
@@ -38,6 +48,7 @@ import type { components } from "./api/generated";
 type ProjectResponse = components["schemas"]["ProjectResponse"];
 type SecretVersionResponse = components["schemas"]["SecretVersionResponse"];
 type SessionResponse = components["schemas"]["SessionResponse"];
+type SecretEntry = components["schemas"]["SecretEntry"];
 
 type Values = Record<string, string>;
 
@@ -102,6 +113,8 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
   const projectsQuery = useQuery({
     queryKey: ["admin", "projects"],
     queryFn: listAdminProjects,
+    enabled:
+      session.policies?.some((policy) => policy === "wrapper-admin" || policy === "root") ?? false,
   });
   const secretQuery = useQuery({
     queryKey: ["secret", project, environment, path],
@@ -109,6 +122,10 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
       document: await readSecret(project, environment, path),
       versions: await listVersions(project, environment, path),
     }),
+  });
+  const entriesQuery = useQuery<SecretEntry[]>({
+    queryKey: ["secret-entries", project, environment, path],
+    queryFn: () => listSecretEntries(project, environment, path),
   });
 
   useEffect(() => {
@@ -289,6 +306,21 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
           fullWidth
           sx={{ mb: 2 }}
         />
+        {entriesQuery.data && entriesQuery.data.length > 0 && (
+          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap" }}>
+            {entriesQuery.data.map((entry) => (
+              <Button
+                key={`${entry.name}-${entry.isFolder}`}
+                size="small"
+                variant="outlined"
+                onClick={() => setPath(path ? `${path}/${entry.name}` : entry.name)}
+              >
+                {entry.name}
+                {entry.isFolder ? "/" : ""}
+              </Button>
+            ))}
+          </Stack>
+        )}
         <TextField
           label="Bulk JSON editor"
           value={bulkValues}
@@ -384,14 +416,163 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
           </>
         )}
       </Paper>
+      {session.policies?.some((policy) => policy === "wrapper-admin" || policy === "root") && (
+        <AdminPanel />
+      )}
     </Container>
+  );
+}
+
+function AdminPanel() {
+  const queryClient = useQueryClient();
+  const [projectId, setProjectId] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [memberUsername, setMemberUsername] = useState("");
+  const [memberPassword, setMemberPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const projects = useQuery({ queryKey: ["admin", "projects"], queryFn: listAdminProjects });
+  const members = useQuery({ queryKey: ["admin", "members"], queryFn: listMembers });
+  const roles = useQuery({ queryKey: ["admin", "roles"], queryFn: listRoles });
+  const machines = useQuery({ queryKey: ["admin", "machines"], queryFn: listMachineIdentities });
+  const audit = useQuery({ queryKey: ["admin", "audit"], queryFn: listAuditEvents });
+
+  async function run(action: () => Promise<void>, success: string) {
+    setError("");
+    try {
+      await action();
+      setMessage(success);
+      await queryClient.invalidateQueries({ queryKey: ["admin"] });
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Admin operation failed.");
+    }
+  }
+
+  return (
+    <Paper sx={{ p: 3, mt: 3 }}>
+      <Typography variant="h6">Administration</Typography>
+      {message && <Alert severity="success">{message}</Alert>}
+      {error && <Alert severity="error">{error}</Alert>}
+      <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 2 }}>
+        <TextField
+          label="New project"
+          value={projectId}
+          onChange={(event) => setProjectId(event.target.value)}
+        />
+        <TextField
+          label="Description"
+          value={projectDescription}
+          onChange={(event) => setProjectDescription(event.target.value)}
+        />
+        <Button
+          variant="contained"
+          onClick={() =>
+            run(async () => {
+              await createProject(projectId, projectDescription);
+              setProjectId("");
+              setProjectDescription("");
+            }, "Project created.")
+          }
+        >
+          Create project
+        </Button>
+      </Stack>
+      <Typography variant="subtitle1" sx={{ mt: 2 }}>
+        Projects
+      </Typography>
+      {(projects.data ?? []).map((project) => (
+        <Stack key={project.id} direction="row" spacing={1} alignItems="center">
+          <Typography sx={{ flex: 1 }}>
+            {project.id} — {project.description || "no description"}
+          </Typography>
+          <Button
+            color="error"
+            onClick={() =>
+              window.confirm(`Delete ${project.id}?`) &&
+              run(() => deleteProject(project.id), "Project deleted.")
+            }
+          >
+            Delete
+          </Button>
+        </Stack>
+      ))}
+      <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 2 }}>
+        <TextField
+          label="New member"
+          value={memberUsername}
+          onChange={(event) => setMemberUsername(event.target.value)}
+        />
+        <TextField
+          label="Temporary password"
+          type="password"
+          value={memberPassword}
+          onChange={(event) => setMemberPassword(event.target.value)}
+        />
+        <Button
+          onClick={() =>
+            run(async () => {
+              await createMember(memberUsername, memberPassword, ["default"]);
+              setMemberUsername("");
+              setMemberPassword("");
+            }, "Member created.")
+          }
+        >
+          Create member
+        </Button>
+      </Stack>
+      <Typography variant="subtitle1" sx={{ mt: 2 }}>
+        Members
+      </Typography>
+      {(members.data ?? []).map((member) => (
+        <Stack key={member.username} direction="row" spacing={1} alignItems="center">
+          <Typography sx={{ flex: 1 }}>
+            {member.username} — {member.disabled ? "disabled" : member.policies.join(", ")}
+          </Typography>
+          {!member.disabled && (
+            <Button onClick={() => run(() => disableMember(member.username), "Member disabled.")}>
+              Disable
+            </Button>
+          )}
+        </Stack>
+      ))}
+      <Typography variant="subtitle1" sx={{ mt: 2 }}>
+        Roles
+      </Typography>
+      <Typography color="text.secondary">
+        {(roles.data ?? []).map((role) => role.name).join(", ") || "No roles available"}
+      </Typography>
+      <Typography variant="subtitle1" sx={{ mt: 2 }}>
+        Machine identities
+      </Typography>
+      <Typography color="text.secondary">
+        {(machines.data ?? []).map((machine) => machine.name).join(", ") || "No machine identities"}
+      </Typography>
+      <Typography variant="subtitle1" sx={{ mt: 2 }}>
+        Recent audit events
+      </Typography>
+      <Typography color="text.secondary">
+        {audit.data?.length ?? 0} projected events loaded; secret values are never displayed.
+      </Typography>
+    </Paper>
   );
 }
 
 function App() {
   const [session, setSession] = useState<SessionResponse | null>(null);
+  const queryClient = useQueryClient();
+  const sessionQuery = useQuery({ queryKey: ["session"], queryFn: getSession, staleTime: 30_000 });
+  useEffect(() => {
+    if (sessionQuery.data) setSession(sessionQuery.data);
+  }, [sessionQuery.data]);
+  if (sessionQuery.isLoading) return null;
   return session ? (
-    <Dashboard session={session} onLogout={() => setSession(null)} />
+    <Dashboard
+      session={session}
+      onLogout={() => {
+        queryClient.setQueryData(["session"], null);
+        setSession(null);
+      }}
+    />
   ) : (
     <Login onLogin={setSession} />
   );

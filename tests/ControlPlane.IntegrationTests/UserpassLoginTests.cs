@@ -122,6 +122,52 @@ public sealed class UserpassLoginTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Production_viewer_cannot_write_production()
+    {
+        using var admin = new HttpClient { BaseAddress = _address };
+        admin.DefaultRequestHeaders.Add("X-Vault-Token", "test-root");
+        var policyName = $"prod-reader-{Guid.NewGuid():N}";
+        var username = $"engineer-{Guid.NewGuid():N}";
+        await admin.PutAsJsonAsync(
+            $"v1/sys/policies/acl/{policyName}",
+            new { policy = "path \"thorneai/data/production/*\" { capabilities = [\"read\"] }" });
+        await admin.PostAsJsonAsync(
+            $"v1/auth/userpass/users/{username}",
+            new { password = "engineer-password", policies = new[] { policyName } });
+
+        using var client = new HttpClient { BaseAddress = _address };
+        var session = await new OpenBaoSessionService(client, Options.Create(new OpenBaoOptions { Address = _address }))
+            .LoginAsync(username, "engineer-password", CancellationToken.None);
+        var engine = new OpenBaoSecretsEngine(client, new FixedTokenAccessor(session.Token));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => engine.WriteAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("production"),
+            SecretPath.Parse("backend"),
+            new SecretDocument(new Dictionary<string, string> { ["KEY"] = "value" }, 0),
+            expectedVersion: 0,
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Restricted_user_cannot_grant_themselves_policies()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var session = await new OpenBaoSessionService(
+                client,
+                Options.Create(new OpenBaoOptions { Address = _address }))
+            .LoginAsync("alice", "correct-password", CancellationToken.None);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "v1/auth/userpass/users/alice")
+        {
+            Content = JsonContent.Create(new { policies = new[] { "wrapper-admin" } }),
+        };
+        request.Headers.Add("X-Vault-Token", session.Token);
+
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Wrong_password_is_rejected_without_an_OpenBao_session()
     {
         using var client = new HttpClient { BaseAddress = _address };
