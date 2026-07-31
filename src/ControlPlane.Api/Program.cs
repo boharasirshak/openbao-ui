@@ -388,24 +388,31 @@ administration.MapPost(
         IMachineIdentityService service,
         CancellationToken cancellationToken) =>
     {
-        var identity = await service.CreateAsync(
-            new MachineIdentity(
-                request.Name,
-                request.Name,
-                request.Project,
-                request.Environment,
-                request.ReadOnly,
-                request.TokenTtlSeconds,
-                request.TokenUses),
-            cancellationToken);
-        return Results.Ok(new MachineIdentityResponse(
-            identity.Name,
-            identity.RoleId,
-            identity.Project,
-            identity.Environment,
-            identity.ReadOnly,
-            identity.TokenTtlSeconds,
-            identity.TokenUses));
+        try
+        {
+            var identity = await service.CreateAsync(
+                new MachineIdentity(
+                    request.Name,
+                    request.Name,
+                    request.Project,
+                    request.Environment,
+                    request.ReadOnly,
+                    request.TokenTtlSeconds,
+                    request.TokenUses),
+                cancellationToken);
+            return Results.Ok(new MachineIdentityResponse(
+                identity.Name,
+                identity.RoleId,
+                identity.Project,
+                identity.Environment,
+                identity.ReadOnly,
+                identity.TokenTtlSeconds,
+                identity.TokenUses));
+        }
+        catch (ArgumentException)
+        {
+            return Results.BadRequest();
+        }
     }).Produces<MachineIdentityResponse>();
 
 administration.MapGet("/machine-identities", async (IMachineIdentityService service, CancellationToken cancellationToken) =>

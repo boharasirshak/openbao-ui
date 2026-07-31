@@ -22,11 +22,13 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import {
+  createMachineIdentity,
   createMember,
   createProject,
   deleteSecret,
   deleteProject,
   disableMember,
+  generateMachineSecretId,
   getSession,
   importSecrets,
   listAuditEvents,
@@ -39,6 +41,7 @@ import {
   login,
   logout,
   readSecret,
+  revokeMachineSecretIds,
   restoreSecret,
   undeleteSecret,
   writeSecret,
@@ -429,6 +432,9 @@ function AdminPanel() {
   const [projectDescription, setProjectDescription] = useState("");
   const [memberUsername, setMemberUsername] = useState("");
   const [memberPassword, setMemberPassword] = useState("");
+  const [machineName, setMachineName] = useState("");
+  const [machineProject, setMachineProject] = useState("");
+  const [machineEnvironment, setMachineEnvironment] = useState("production");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const projects = useQuery({ queryKey: ["admin", "projects"], queryFn: listAdminProjects });
@@ -544,9 +550,55 @@ function AdminPanel() {
       <Typography variant="subtitle1" sx={{ mt: 2 }}>
         Machine identities
       </Typography>
-      <Typography color="text.secondary">
-        {(machines.data ?? []).map((machine) => machine.name).join(", ") || "No machine identities"}
-      </Typography>
+      <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 1 }}>
+        <TextField
+          label="Machine name"
+          value={machineName}
+          onChange={(event) => setMachineName(event.target.value)}
+        />
+        <TextField
+          label="Project"
+          value={machineProject}
+          onChange={(event) => setMachineProject(event.target.value)}
+        />
+        <TextField
+          label="Environment"
+          value={machineEnvironment}
+          onChange={(event) => setMachineEnvironment(event.target.value)}
+        />
+        <Button
+          onClick={() =>
+            run(async () => {
+              await createMachineIdentity(machineName, machineProject, machineEnvironment);
+              setMachineName("");
+            }, "Machine identity created.")
+          }
+        >
+          Create machine
+        </Button>
+      </Stack>
+      {(machines.data ?? []).map((machine) => (
+        <Stack key={machine.name} direction="row" spacing={1} alignItems="center">
+          <Typography sx={{ flex: 1 }}>
+            {machine.name} — {machine.project}/{machine.environment}
+          </Typography>
+          <Button
+            onClick={() =>
+              run(async () => {
+                const secretId = await generateMachineSecretId(machine.name);
+                await navigator.clipboard.writeText(secretId);
+              }, "Secret ID generated and copied once.")
+            }
+          >
+            Generate Secret ID
+          </Button>
+          <Button
+            onClick={() => run(() => revokeMachineSecretIds(machine.name), "Secret IDs revoked.")}
+          >
+            Revoke IDs
+          </Button>
+        </Stack>
+      ))}
       <Typography variant="subtitle1" sx={{ mt: 2 }}>
         Recent audit events
       </Typography>

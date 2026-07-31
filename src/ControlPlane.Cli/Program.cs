@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ControlPlane.Domain;
 
 return await SecretsCli.RunAsync(args);
 
@@ -208,22 +209,10 @@ internal static class SecretsCli
 
     private static string SecretPath(string[] args)
     {
-        var project = RequiredOption(args, "--project");
-        var environment = RequiredOption(args, "--env");
-        var path = RequiredOption(args, "--path") ?? "root";
-        ValidatePath(project, environment, path);
+        var project = ProjectId.Parse(RequiredOption(args, "--project") ?? throw new ArgumentException("Project is required."));
+        var environment = EnvironmentId.Parse(RequiredOption(args, "--env") ?? throw new ArgumentException("Environment is required."));
+        var path = ControlPlane.Domain.SecretPath.Parse(RequiredOption(args, "--path") ?? "root");
         return $"v1/{project}/data/{environment}/{path}";
-    }
-
-    private static void ValidatePath(string? project, string? environment, string path)
-    {
-        if (string.IsNullOrWhiteSpace(project) || string.IsNullOrWhiteSpace(environment)
-            || path.Split('/').Any(segment => string.IsNullOrWhiteSpace(segment)
-                || segment is "." or ".."
-                || segment.Any(character => !char.IsLetterOrDigit(character) && character is not '-' and not '_')))
-        {
-            throw new ArgumentException("Project, environment, or secret path is invalid.");
-        }
     }
 
     private static Dictionary<string, string> ParseEnv(IEnumerable<string> lines) =>

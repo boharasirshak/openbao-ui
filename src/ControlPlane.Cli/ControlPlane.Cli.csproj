@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ControlPlane.Contracts\ControlPlane.Contracts.csproj" />
+    <ProjectReference Include="..\ControlPlane.Domain\ControlPlane.Domain.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

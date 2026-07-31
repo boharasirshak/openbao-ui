@@ -233,6 +233,45 @@ export async function listMachineIdentities(): Promise<MachineIdentityResponse[]
   return response.json();
 }
 
+export async function createMachineIdentity(
+  name: string,
+  project: string,
+  environment: string,
+  readOnly = true,
+): Promise<MachineIdentityResponse> {
+  const response = await unsafeRequest("/api/admin/machine-identities", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      name,
+      project,
+      environment,
+      readOnly,
+      tokenTtlSeconds: 300,
+      tokenUses: 1,
+    }),
+  });
+  if (!response.ok) throw new Error("Machine identity creation failed.");
+  return response.json();
+}
+
+export async function generateMachineSecretId(roleName: string): Promise<string> {
+  const response = await unsafeRequest(
+    `/api/admin/machine-identities/${encodeURIComponent(roleName)}/secret-id`,
+    { method: "POST" },
+  );
+  if (!response.ok) throw new Error("Secret ID generation failed.");
+  return (await response.json()).secretId;
+}
+
+export async function revokeMachineSecretIds(roleName: string): Promise<void> {
+  const response = await unsafeRequest(
+    `/api/admin/machine-identities/${encodeURIComponent(roleName)}/secret-id/revoke`,
+    { method: "POST" },
+  );
+  if (!response.ok) throw new Error("Secret ID revocation failed.");
+}
+
 export async function listAuditEvents(): Promise<unknown[]> {
   const response = await fetch("/api/admin/audit/recent", { credentials: "include" });
   if (!response.ok) throw new Error("Audit list unavailable.");

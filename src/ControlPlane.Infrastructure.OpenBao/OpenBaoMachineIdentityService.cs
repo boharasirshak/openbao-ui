@@ -39,6 +39,9 @@ public sealed class OpenBaoMachineIdentityService(
 
     public async Task<MachineIdentity> CreateAsync(MachineIdentity identity, CancellationToken cancellationToken)
     {
+        _ = ProjectId.Parse(identity.Name);
+        _ = ProjectId.Parse(identity.Project);
+        _ = EnvironmentId.Parse(identity.Environment);
         var policyName = $"{identity.Name}-runtime";
         await policyService.CreateRoleAsync(
             new Role(policyName, identity.Project, identity.Environment, identity.ReadOnly),
