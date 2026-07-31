@@ -131,7 +131,10 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
             project,
             environment,
             path,
-            new SecretDocument(data.Values.ToDictionary(pair => pair.Key, pair => pair.Value.GetString() ?? string.Empty), 0),
+            new SecretDocument(
+                data.Values.ToDictionary(pair => pair.Key, pair => pair.Value.GetString() ?? string.Empty),
+                0,
+                data.Metadata.CustomMetadata?.GetValueOrDefault("description")),
             expectedVersion: null,
             cancellationToken);
     }

@@ -48,6 +48,7 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         var session = await service.LoginAsync("alice", "correct-password", CancellationToken.None);
         Assert.NotEmpty(session.Token);
         Assert.True(session.ExpiresAt > DateTimeOffset.UtcNow);
+        Assert.Contains("dev-writer", session.Policies);
     }
 
     [Fact]
