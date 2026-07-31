@@ -15,11 +15,14 @@ services:
       retries: 30
   bootstrap:
     image: curlimages/curl:8.12.1
+    user: "0"
     depends_on:
       openbao:
         condition: service_healthy
     volumes:
       - ../openbao/bootstrap:/bootstrap:ro
+      - openbao-bootstrap-state:/bootstrap-state
     entrypoint: ["/bin/sh", "/bootstrap/userpass.sh"]
 volumes:
   openbao-data:
+  openbao-bootstrap-state:
