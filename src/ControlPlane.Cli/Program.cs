@@ -103,7 +103,10 @@ internal static class SecretsCli
     private static async Task<int> ImportAsync(HttpClient client, TokenStore store, string[] args)
     {
         var file = RequiredArgument(args, 0, "An import file is required.");
-        var values = ParseEnv(await File.ReadAllLinesAsync(file));
+        var values = Path.GetExtension(file).Equals(".json", StringComparison.OrdinalIgnoreCase)
+            ? JsonSerializer.Deserialize<Dictionary<string, string>>(await File.ReadAllTextAsync(file))
+                ?? throw new ArgumentException("The JSON import must be an object of string values.")
+            : ParseEnv(await File.ReadAllLinesAsync(file));
         await WriteDocumentAsync(client, store, args, values, GetExpectedVersion(args));
         return 0;
     }

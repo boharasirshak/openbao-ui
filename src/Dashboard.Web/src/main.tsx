@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Box,
+  Breadcrumbs,
   Button,
   Chip,
   Container,
@@ -84,37 +86,56 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
   const [environment, setEnvironment] = useState("development");
   const [path, setPath] = useState("backend");
   const [values, setValues] = useState<Values>({});
+  const [bulkValues, setBulkValues] = useState("{}");
   const [version, setVersion] = useState(0);
   const [versions, setVersions] = useState<SecretVersionResponse[]>([]);
-  const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+
+  const projectsQuery = useQuery({
+    queryKey: ["admin", "projects"],
+    queryFn: listAdminProjects,
+  });
+  const secretQuery = useQuery({
+    queryKey: ["secret", project, environment, path],
+    queryFn: async () => ({
+      document: await readSecret(project, environment, path),
+      versions: await listVersions(project, environment, path),
+    }),
+  });
 
   useEffect(() => {
-    listAdminProjects()
-      .then(setProjects)
-      .catch(() => setProjects([]));
-  }, []);
+    if (secretQuery.data) {
+      setValues(secretQuery.data.document.values);
+      setBulkValues(JSON.stringify(secretQuery.data.document.values, null, 2));
+      setVersion(secretQuery.data.document.version);
+      setVersions(secretQuery.data.versions);
+      setRevealed({});
+    }
+    if (secretQuery.error) {
+      setError(
+        secretQuery.error instanceof Error ? secretQuery.error.message : "Secret load failed.",
+      );
+    }
+  }, [secretQuery.data, secretQuery.error]);
 
-  const projectOptions = useMemo(() => projects.map((item) => item.id), [projects]);
+  const projectOptions = useMemo(
+    () => (projectsQuery.data ?? []).map((item: ProjectResponse) => item.id),
+    [projectsQuery.data],
+  );
 
   async function load() {
     setError("");
-    try {
-      const document = await readSecret(project, environment, path);
-      setValues(document.values);
-      setVersion(document.version);
-      setVersions(await listVersions(project, environment, path));
-      setRevealed({});
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Secret load failed.");
-    }
+    await queryClient.invalidateQueries({ queryKey: ["secret", project, environment, path] });
   }
 
   async function save() {
     try {
-      await writeSecret(project, environment, path, values, version);
+      const nextValues = JSON.parse(bulkValues) as Values;
+      await writeSecret(project, environment, path, nextValues, version);
+      setValues(nextValues);
       setMessage("Saved.");
       await load();
     } catch (saveError) {
@@ -143,15 +164,17 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
 
   async function importFile(file: File) {
     const text = await file.text();
-    const imported = Object.fromEntries(
-      text
-        .split(/\r?\n/)
-        .filter((line) => line && !line.startsWith("#"))
-        .map((line) => {
-          const index = line.indexOf("=");
-          return [line.slice(0, index), line.slice(index + 1).replace(/^"|"$/g, "")];
-        }),
-    );
+    const imported = file.name.endsWith(".json")
+      ? (JSON.parse(text) as Values)
+      : Object.fromEntries(
+          text
+            .split(/\r?\n/)
+            .filter((line) => line && !line.startsWith("#"))
+            .map((line) => {
+              const index = line.indexOf("=");
+              return [line.slice(0, index), line.slice(index + 1).replace(/^"|"$/g, "")];
+            }),
+        );
     await importSecrets(project, environment, path, imported, version || undefined);
     await load();
   }
@@ -169,6 +192,16 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
     const link = document.createElement("a");
     link.href = url;
     link.download = `${project}-${environment}-${path.replaceAll("/", "-")}.env`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(values, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${project}-${environment}-${path.replaceAll("/", "-")}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -234,13 +267,35 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
           </Alert>
         )}
         <Divider sx={{ my: 3 }} />
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Typography color="text.secondary">{project}</Typography>
+          <Typography color={environment === "production" ? "error" : "text.secondary"}>
+            {environment}
+          </Typography>
+          {path.split("/").map((segment) => (
+            <Typography key={segment}>{segment}</Typography>
+          ))}
+        </Breadcrumbs>
+        <TextField
+          label="Bulk JSON editor"
+          value={bulkValues}
+          onChange={(event) => setBulkValues(event.target.value)}
+          multiline
+          minRows={5}
+          fullWidth
+          sx={{ mb: 2 }}
+        />
         <Stack spacing={1}>
           {Object.entries(values).map(([key, value]) => (
             <Stack key={key} direction="row" spacing={1} alignItems="center">
               <TextField
                 label={key}
                 value={revealed[key] ? value : "••••••••"}
-                onChange={(event) => setValues({ ...values, [key]: event.target.value })}
+                onChange={(event) => {
+                  const nextValues = { ...values, [key]: event.target.value };
+                  setValues(nextValues);
+                  setBulkValues(JSON.stringify(nextValues, null, 2));
+                }}
                 fullWidth
               />
               <Tooltip title={revealed[key] ? "Mask value" : "Reveal value"}>
@@ -259,6 +314,7 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
                     const next = { ...values };
                     delete next[key];
                     setValues(next);
+                    setBulkValues(JSON.stringify(next, null, 2));
                   }}
                 >
                   <DeleteOutlineIcon />
@@ -268,7 +324,15 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
           ))}
         </Stack>
         <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-          <Button onClick={() => setValues({ ...values, NEW_SECRET: "" })}>Add secret</Button>
+          <Button
+            onClick={() => {
+              const nextValues = { ...values, NEW_SECRET: "" };
+              setValues(nextValues);
+              setBulkValues(JSON.stringify(nextValues, null, 2));
+            }}
+          >
+            Add secret
+          </Button>
           <Button variant="contained" onClick={save}>
             Save
           </Button>
@@ -276,15 +340,16 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
             Delete collection
           </Button>
           <Button component="label">
-            Import .env
+            Import
             <input
               hidden
               type="file"
-              accept=".env,text/plain"
+              accept=".env,.json,text/plain,application/json"
               onChange={(event) => event.target.files?.[0] && importFile(event.target.files[0])}
             />
           </Button>
           <Button onClick={exportFile}>Export .env</Button>
+          <Button onClick={exportJson}>Export JSON</Button>
         </Stack>
         {versions.length > 0 && (
           <>
@@ -315,4 +380,17 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+    },
+  },
+});
+
+createRoot(document.getElementById("root")!).render(
+  <QueryClientProvider client={queryClient}>
+    <App />
+  </QueryClientProvider>,
+);

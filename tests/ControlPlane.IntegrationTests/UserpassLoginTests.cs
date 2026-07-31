@@ -1,6 +1,7 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
-using System.Diagnostics;
+using System.Text.Json;
 using ControlPlane.Application;
 using ControlPlane.Domain;
 using ControlPlane.Infrastructure.OpenBao;
@@ -204,14 +205,25 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         var admin = new OpenBaoAdministrativeClient(client, options);
         var policyService = new OpenBaoPolicyService(admin);
         var machines = new OpenBaoMachineIdentityService(admin, policyService);
-
         var identity = await machines.CreateAsync(
             new MachineIdentity("coolify-thorneai-prod", "coolify-thorneai-prod", "thorneai", "production", true, 60, 1),
             CancellationToken.None);
         var secretId = await machines.GenerateSecretIdAsync(identity.Name, CancellationToken.None);
+        using var loginResponse = await client.PostAsJsonAsync(
+            "v1/auth/approle/login",
+            new { role_id = identity.RoleId, secret_id = secretId });
+        loginResponse.EnsureSuccessStatusCode();
+        using var loginPayload = JsonDocument.Parse(await loginResponse.Content.ReadAsStringAsync());
+        var machineToken = loginPayload.RootElement.GetProperty("auth").GetProperty("client_token").GetString()!;
+        var machineEngine = new OpenBaoSecretsEngine(client, new FixedTokenAccessor(machineToken));
 
         Assert.NotEqual(identity.Name, identity.RoleId);
         Assert.NotEmpty(secretId);
+        await Assert.ThrowsAsync<HttpRequestException>(() => machineEngine.ReadAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("development"),
+            SecretPath.Parse("backend"),
+            CancellationToken.None));
     }
 
     [Fact]

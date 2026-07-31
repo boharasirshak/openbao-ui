@@ -7,8 +7,35 @@ public sealed class OpenBaoMachineIdentityService(
     OpenBaoAdministrativeClient client,
     IPolicyService policyService) : IMachineIdentityService
 {
-    public Task<IReadOnlyList<MachineIdentity>> ListAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<MachineIdentity>>([]);
+    public async Task<IReadOnlyList<MachineIdentity>> ListAsync(CancellationToken cancellationToken)
+    {
+        var roles = await client.GetAsync("v1/auth/approle/role?list=true", cancellationToken);
+        var data = roles?.RootElement.TryGetProperty("data", out var roleData) == true ? roleData : default;
+        if (data.ValueKind != System.Text.Json.JsonValueKind.Object
+            || !data.TryGetProperty("keys", out var keys))
+        {
+            return [];
+        }
+
+        var identities = new List<MachineIdentity>();
+        foreach (var key in keys.EnumerateArray().Select(value => value.GetString()!))
+        {
+            var config = await client.GetAsync($"v1/auth/approle/role/{Uri.EscapeDataString(key)}", cancellationToken);
+            var role = config?.RootElement.GetProperty("data");
+            var roleId = await client.GetAsync($"v1/auth/approle/role/{Uri.EscapeDataString(key)}/role-id", cancellationToken);
+            var id = roleId?.RootElement.GetProperty("data").GetProperty("role_id").GetString() ?? key;
+            identities.Add(new MachineIdentity(
+                key,
+                id,
+                string.Empty,
+                string.Empty,
+                true,
+                role?.GetProperty("token_ttl").GetInt32(),
+                role?.GetProperty("secret_id_num_uses").GetInt32()));
+        }
+
+        return identities;
+    }
 
     public async Task<MachineIdentity> CreateAsync(MachineIdentity identity, CancellationToken cancellationToken)
     {

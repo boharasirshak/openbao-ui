@@ -2,8 +2,8 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using ControlPlane.Application;
 using ControlPlane.Contracts;
-using ControlPlane.Infrastructure.OpenBao;
 using ControlPlane.Domain;
+using ControlPlane.Infrastructure.OpenBao;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -381,6 +381,19 @@ administration.MapPost(
             identity.TokenTtlSeconds,
             identity.TokenUses));
     });
+
+administration.MapGet("/machine-identities", async (IMachineIdentityService service, CancellationToken cancellationToken) =>
+{
+    var identities = await service.ListAsync(cancellationToken);
+    return Results.Ok(identities.Select(identity => new MachineIdentityResponse(
+        identity.Name,
+        identity.RoleId,
+        identity.Project,
+        identity.Environment,
+        identity.ReadOnly,
+        identity.TokenTtlSeconds,
+        identity.TokenUses)));
+});
 
 administration.MapPost(
     "/machine-identities/{roleName}/secret-id",
