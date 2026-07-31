@@ -168,6 +168,28 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         Assert.Equal(3, first.Environments.Count);
     }
 
+    [Fact]
+    public async Task AppRole_machine_identity_gets_a_restricted_secret_id()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var options = Options.Create(new OpenBaoOptions
+        {
+            Address = _address,
+            ControlToken = "test-root",
+        });
+        var admin = new OpenBaoAdministrativeClient(client, options);
+        var policyService = new OpenBaoPolicyService(admin);
+        var machines = new OpenBaoMachineIdentityService(admin, policyService);
+
+        var identity = await machines.CreateAsync(
+            new MachineIdentity("coolify-thorneai-prod", "coolify-thorneai-prod", "thorneai", "production", 60, 1),
+            CancellationToken.None);
+        var secretId = await machines.GenerateSecretIdAsync(identity.Name, CancellationToken.None);
+
+        Assert.NotEqual(identity.Name, identity.RoleId);
+        Assert.NotEmpty(secretId);
+    }
+
     public Task DisposeAsync() => _openBao.DisposeAsync().AsTask();
 
     private sealed class FixedTokenAccessor(string token) : IOpenBaoTokenAccessor

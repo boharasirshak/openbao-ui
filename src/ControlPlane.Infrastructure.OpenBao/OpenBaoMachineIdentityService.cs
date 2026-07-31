@@ -16,7 +16,11 @@ public sealed class OpenBaoMachineIdentityService(
         await policyService.CreateRoleAsync(
             new Role(policyName, identity.Project, identity.Environment, ReadOnly: true),
             cancellationToken);
-        if (await client.GetAsync("v1/sys/auth/approle", cancellationToken) is null)
+        var authMethods = await client.GetAsync("v1/sys/auth", cancellationToken);
+        var authData = authMethods?.RootElement.TryGetProperty("data", out var data) == true
+            ? data
+            : authMethods?.RootElement;
+        if (authData?.TryGetProperty("approle/", out _) != true)
         {
             await client.PostAsync("v1/sys/auth/approle", new { type = "approle" }, cancellationToken);
         }
