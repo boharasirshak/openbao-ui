@@ -47,7 +47,14 @@ internal static class SecretsCli
     private static async Task<int> LoginAsync(HttpClient client, TokenStore store, string[] args)
     {
         var username = RequiredOption(args, "--username") ?? Console.ReadLine();
-        var password = RequiredOption(args, "--password") ?? ReadPassword();
+        if (RequiredOption(args, "--password") is not null)
+        {
+            throw new ArgumentException("Do not pass passwords as command-line arguments; use the secure prompt or --password-stdin.");
+        }
+
+        var password = args.Contains("--password-stdin", StringComparer.Ordinal)
+            ? (await Console.In.ReadToEndAsync()).TrimEnd('\r', '\n')
+            : ReadPassword();
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
             throw new ArgumentException("Username and password are required.");
@@ -125,6 +132,11 @@ internal static class SecretsCli
 
         var document = await ReadDocumentAsync(client, store, args);
         var values = document.Values.ToDictionary(pair => pair.Key, pair => pair.Value);
+        if (!IsValidSecretKey(assignment[..separator]))
+        {
+            throw new ArgumentException("Secret keys must be valid environment variable names.");
+        }
+
         values[assignment[..separator]] = assignment[(separator + 1)..];
         await WriteDocumentAsync(client, store, args, values, document.Version);
         return 0;
@@ -219,9 +231,16 @@ internal static class SecretsCli
         lines.Where(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith('#'))
             .Select(line => line.StartsWith("export ", StringComparison.Ordinal) ? line[7..] : line)
             .Select(line => line.IndexOf('=') is var separator && separator > 0
-                ? new KeyValuePair<string, string>(line[..separator], UnescapeDotEnv(line[(separator + 1)..]))
+                ? IsValidSecretKey(line[..separator])
+                    ? new KeyValuePair<string, string>(line[..separator], UnescapeDotEnv(line[(separator + 1)..]))
+                    : throw new ArgumentException("Secret keys must be valid environment variable names.")
                 : throw new ArgumentException("Invalid .env line."))
             .ToDictionary(pair => pair.Key, pair => pair.Value);
+
+    private static bool IsValidSecretKey(string key) =>
+        !string.IsNullOrWhiteSpace(key)
+        && (char.IsLetter(key[0]) || key[0] == '_')
+        && key.Skip(1).All(character => char.IsLetterOrDigit(character) || character == '_');
 
     private static int? GetExpectedVersion(string[] args) =>
         int.TryParse(RequiredOption(args, "--version"), out var version) ? version : null;

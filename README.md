@@ -24,6 +24,8 @@ dotnet run --project src/ControlPlane.Cli -- set --project thorneai --env develo
 
 `run` keeps values in memory, injects them into the child process, forwards standard streams and termination signals, and never creates a `.env` file. The local token file is restricted to the current user; set `SECRETS_TOKEN_FILE` for an explicit path in managed environments.
 
+CLI login reads the password from a hidden prompt; automation should pipe it with `--password-stdin`. Password command-line arguments are rejected because process listings can expose them.
+
 ## Tests and formatting
 
 ```bash

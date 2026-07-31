@@ -607,7 +607,7 @@ secrets.MapPost(
         ISecretsEngine secretsEngine,
         CancellationToken cancellationToken) =>
     {
-        if (request.Values.Count == 0)
+        if (request.Values.Count == 0 || request.Values.Keys.Any(key => !IsValidSecretKey(key)))
         {
             return Results.BadRequest();
         }
@@ -659,7 +659,7 @@ secrets.MapPut(
         ISecretsEngine secretsEngine,
         CancellationToken cancellationToken) =>
     {
-        if (request.Values.Count == 0 || request.Values.Any(pair => string.IsNullOrWhiteSpace(pair.Key)))
+        if (request.Values.Count == 0 || request.Values.Keys.Any(key => !IsValidSecretKey(key)))
         {
             return Results.BadRequest();
         }
@@ -713,6 +713,11 @@ static string EscapeDotEnv(string value) =>
     value.IndexOfAny([' ', '\t', '\n', '\r', '"', '\'']) >= 0
         ? $"\"{value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r")}\""
         : value;
+
+static bool IsValidSecretKey(string key) =>
+    !string.IsNullOrWhiteSpace(key)
+    && (char.IsLetter(key[0]) || key[0] == '_')
+    && key.Skip(1).All(character => char.IsLetterOrDigit(character) || character == '_');
 
 public partial class Program
 {

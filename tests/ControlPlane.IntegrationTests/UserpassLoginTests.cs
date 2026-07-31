@@ -351,7 +351,13 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         var tokenFile = Path.Combine(Path.GetTempPath(), $"secrets-token-{Guid.NewGuid():N}");
         try
         {
-            var login = await RunCliAsync(tokenFile, "login", "--username", "cli-user", "--password", "cli-password");
+            var login = await RunCliWithInputAsync(
+                tokenFile,
+                "cli-password\n",
+                "login",
+                "--username",
+                "cli-user",
+                "--password-stdin");
             Assert.Equal(0, login.ExitCode);
             var export = await RunCliAsync(tokenFile, "export", "--project", "cli-project", "--env", "development", "--path", "backend");
             Assert.Equal(0, export.ExitCode);
@@ -382,6 +388,12 @@ public sealed class UserpassLoginTests : IAsyncLifetime
     private async Task<(int ExitCode, string StandardOutput, string StandardError)> RunCliAsync(
         string tokenFile,
         params string[] arguments)
+        => await RunCliWithInputAsync(tokenFile, null, arguments);
+
+    private async Task<(int ExitCode, string StandardOutput, string StandardError)> RunCliWithInputAsync(
+        string tokenFile,
+        string? standardInput,
+        params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -390,6 +402,7 @@ public sealed class UserpassLoginTests : IAsyncLifetime
             ArgumentList = { "ControlPlane.Cli.dll" },
             RedirectStandardError = true,
             RedirectStandardOutput = true,
+            RedirectStandardInput = standardInput is not null,
             UseShellExecute = false,
             Environment =
             {
@@ -402,6 +415,12 @@ public sealed class UserpassLoginTests : IAsyncLifetime
             startInfo.ArgumentList.Add(argument);
         }
         var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start CLI.");
+        if (standardInput is not null)
+        {
+            await process.StandardInput.WriteAsync(standardInput);
+            await process.StandardInput.FlushAsync();
+            process.StandardInput.Close();
+        }
         await process.WaitForExitAsync();
         return (
             process.ExitCode,
