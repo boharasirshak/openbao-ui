@@ -171,7 +171,10 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
       <Toolbar disableGutters sx={{ justifyContent: "space-between", py: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center">
           <Typography variant="h5">OpenBao Secrets</Typography>
-          <Chip size="small" label={`Session expires ${new Date(session.expiresAt).toLocaleString()}`} />
+          <Chip
+            size="small"
+            label={`Session expires ${new Date(session.expiresAt).toLocaleString()}`}
+          />
         </Stack>
         <Button
           onClick={async () => {

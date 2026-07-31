@@ -14,7 +14,7 @@ public sealed class OpenBaoMachineIdentityService(
     {
         var policyName = $"{identity.Name}-runtime";
         await policyService.CreateRoleAsync(
-            new Role(policyName, identity.Project, identity.Environment, ReadOnly: true),
+            new Role(policyName, identity.Project, identity.Environment, identity.ReadOnly),
             cancellationToken);
         var authMethods = await client.GetAsync("v1/sys/auth", cancellationToken);
         var authData = authMethods?.RootElement.TryGetProperty("data", out var data) == true

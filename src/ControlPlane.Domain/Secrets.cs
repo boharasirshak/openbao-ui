@@ -69,6 +69,7 @@ public sealed record MachineIdentity(
     string RoleId,
     string Project,
     string Environment,
+    bool ReadOnly,
     int? TokenTtlSeconds,
     int? TokenUses);
 

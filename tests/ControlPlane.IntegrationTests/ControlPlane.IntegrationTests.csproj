@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ControlPlane.Api\ControlPlane.Api.csproj" />
     <ProjectReference Include="..\..\src\ControlPlane.Infrastructure.OpenBao\ControlPlane.Infrastructure.OpenBao.csproj" />
+    <ProjectReference Include="..\..\src\ControlPlane.Cli\ControlPlane.Cli.csproj" />
   </ItemGroup>
 
 </Project>

@@ -110,7 +110,9 @@ internal static class SecretsCli
 
     private static async Task<int> SetAsync(HttpClient client, TokenStore store, string[] args)
     {
-        var assignment = RequiredArgument(args, 0, "KEY=value is required.");
+        var assignment = args.FirstOrDefault(argument =>
+            !argument.StartsWith("--", StringComparison.Ordinal) && argument.Contains('='))
+            ?? throw new ArgumentException("KEY=value is required.");
         var separator = assignment.IndexOf('=');
         if (separator <= 0)
         {
@@ -305,11 +307,12 @@ internal static class SecretsCli
 
     private sealed class TokenStore
     {
-        private readonly string path = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".config",
-            "secrets",
-            "token");
+        private readonly string path = Environment.GetEnvironmentVariable("SECRETS_TOKEN_FILE")
+            ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".config",
+                "secrets",
+                "token");
 
         public async Task SaveAsync(string token)
         {

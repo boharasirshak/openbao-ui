@@ -298,6 +298,20 @@ administration.MapPut(
     });
 
 administration.MapPost(
+    "/members/{username}/roles",
+    async (string username, AssignRolesRequest request, IIdentityService service, CancellationToken cancellationToken) =>
+    {
+        if (request.Roles.Any(role => string.IsNullOrWhiteSpace(role)
+            || role.Any(character => !char.IsLetterOrDigit(character) && character is not '-' and not '_')))
+        {
+            return Results.BadRequest();
+        }
+
+        await service.SetPoliciesAsync(username, request.Roles, cancellationToken);
+        return Results.NoContent();
+    });
+
+administration.MapPost(
     "/members/{username}/disable",
     async (string username, IIdentityService service, CancellationToken cancellationToken) =>
     {
@@ -354,6 +368,7 @@ administration.MapPost(
                 request.Name,
                 request.Project,
                 request.Environment,
+                request.ReadOnly,
                 request.TokenTtlSeconds,
                 request.TokenUses),
             cancellationToken);
@@ -362,6 +377,7 @@ administration.MapPost(
             identity.RoleId,
             identity.Project,
             identity.Environment,
+            identity.ReadOnly,
             identity.TokenTtlSeconds,
             identity.TokenUses));
     });

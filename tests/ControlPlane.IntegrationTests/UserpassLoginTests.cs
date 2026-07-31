@@ -1,4 +1,6 @@
+using System.Net;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using ControlPlane.Application;
 using ControlPlane.Domain;
 using ControlPlane.Infrastructure.OpenBao;
@@ -93,6 +95,28 @@ public sealed class UserpassLoginTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Restricted_user_cannot_list_production_metadata_or_mounts()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var session = await new OpenBaoSessionService(
+            client,
+            Options.Create(new OpenBaoOptions { Address = _address }))
+            .LoginAsync("alice", "correct-password", CancellationToken.None);
+        var engine = new OpenBaoSecretsEngine(client, new FixedTokenAccessor(session.Token));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => engine.ListAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("production"),
+            folder: null,
+            cancellationToken: CancellationToken.None));
+
+        using var mountsRequest = new HttpRequestMessage(HttpMethod.Get, "v1/sys/mounts");
+        mountsRequest.Headers.Add("X-Vault-Token", session.Token);
+        using var mountsResponse = await client.SendAsync(mountsRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, mountsResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task Wrong_password_is_rejected_without_an_OpenBao_session()
     {
         using var client = new HttpClient { BaseAddress = _address };
@@ -182,7 +206,7 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         var machines = new OpenBaoMachineIdentityService(admin, policyService);
 
         var identity = await machines.CreateAsync(
-            new MachineIdentity("coolify-thorneai-prod", "coolify-thorneai-prod", "thorneai", "production", 60, 1),
+            new MachineIdentity("coolify-thorneai-prod", "coolify-thorneai-prod", "thorneai", "production", true, 60, 1),
             CancellationToken.None);
         var secretId = await machines.GenerateSecretIdAsync(identity.Name, CancellationToken.None);
 
@@ -211,6 +235,99 @@ public sealed class UserpassLoginTests : IAsyncLifetime
                 client,
                 options)
             .LoginAsync("bob", "bob-password", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Cli_login_and_export_do_not_print_secret_values_to_stderr()
+    {
+        using var client = new HttpClient { BaseAddress = _address };
+        var admin = new OpenBaoAdministrativeClient(client, Options.Create(new OpenBaoOptions
+        {
+            Address = _address,
+            ControlToken = "test-root",
+        }));
+        await admin.PostAsync(
+            "v1/sys/mounts/cli-project",
+            new { type = "kv", options = new { version = "2" } },
+            CancellationToken.None);
+        await admin.PutAsync(
+            "v1/sys/policies/acl/cli-reader",
+            new { policy = "path \"cli-project/data/development/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\"] }" },
+            CancellationToken.None);
+        await admin.PostAsync(
+            "v1/auth/userpass/users/cli-user",
+            new { password = "cli-password", policies = new[] { "cli-reader" } },
+            CancellationToken.None);
+        var cliSession = await new OpenBaoSessionService(
+                client,
+                Options.Create(new OpenBaoOptions { Address = _address }))
+            .LoginAsync("cli-user", "cli-password", CancellationToken.None);
+        await new OpenBaoSecretsEngine(client, new FixedTokenAccessor(cliSession.Token)).WriteAsync(
+            ProjectId.Parse("cli-project"),
+            EnvironmentId.Parse("development"),
+            SecretPath.Parse("backend"),
+            new SecretDocument(new Dictionary<string, string> { ["CLI_SECRET"] = "secret-value" }, 0),
+            expectedVersion: 0,
+            cancellationToken: CancellationToken.None);
+        var tokenFile = Path.Combine(Path.GetTempPath(), $"secrets-token-{Guid.NewGuid():N}");
+        try
+        {
+            var login = await RunCliAsync(tokenFile, "login", "--username", "cli-user", "--password", "cli-password");
+            Assert.Equal(0, login.ExitCode);
+            var export = await RunCliAsync(tokenFile, "export", "--project", "cli-project", "--env", "development", "--path", "backend");
+            Assert.Equal(0, export.ExitCode);
+            Assert.Contains("CLI_SECRET=secret-value", export.StandardOutput);
+            Assert.DoesNotContain("secret-value", export.StandardError);
+            var run = await RunCliAsync(
+                tokenFile,
+                "run",
+                "--project",
+                "cli-project",
+                "--env",
+                "development",
+                "--path",
+                "backend",
+                "--",
+                "sh",
+                "-c",
+                "printf '%s' \"$CLI_SECRET\"");
+            Assert.Equal(0, run.ExitCode);
+            Assert.Equal("secret-value", run.StandardOutput);
+        }
+        finally
+        {
+            File.Delete(tokenFile);
+        }
+    }
+
+    private async Task<(int ExitCode, string StandardOutput, string StandardError)> RunCliAsync(
+        string tokenFile,
+        params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            WorkingDirectory = AppContext.BaseDirectory,
+            ArgumentList = { "ControlPlane.Cli.dll" },
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            Environment =
+            {
+                ["OPENBAO_ADDR"] = _address.ToString(),
+                ["SECRETS_TOKEN_FILE"] = tokenFile,
+            },
+        };
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+        var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start CLI.");
+        await process.WaitForExitAsync();
+        return (
+            process.ExitCode,
+            await process.StandardOutput.ReadToEndAsync(),
+            await process.StandardError.ReadToEndAsync());
     }
 
     public Task DisposeAsync() => _openBao.DisposeAsync().AsTask();
