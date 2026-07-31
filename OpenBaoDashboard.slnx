@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ControlPlane.Api/ControlPlane.Api.csproj" />
+    <Project Path="src/ControlPlane.Application/ControlPlane.Application.csproj" />
+    <Project Path="src/ControlPlane.Cli/ControlPlane.Cli.csproj" />
+    <Project Path="src/ControlPlane.Contracts/ControlPlane.Contracts.csproj" />
+    <Project Path="src/ControlPlane.Domain/ControlPlane.Domain.csproj" />
+    <Project Path="src/ControlPlane.Infrastructure.OpenBao/ControlPlane.Infrastructure.OpenBao.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ControlPlane.IntegrationTests/ControlPlane.IntegrationTests.csproj" />
+    <Project Path="tests/ControlPlane.UnitTests/ControlPlane.UnitTests.csproj" />
+  </Folder>
+</Solution>
