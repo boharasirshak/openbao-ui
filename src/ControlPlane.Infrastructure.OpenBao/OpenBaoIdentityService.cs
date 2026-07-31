@@ -64,6 +64,7 @@ public sealed class OpenBaoIdentityService(OpenBaoAdministrativeClient client) :
         var entity = await FindEntityAsync(username, cancellationToken);
         if (entity is not null)
         {
+            await RevokeEntityTokensAsync(entity.Id, cancellationToken);
             await client.PostAsync($"v1/identity/entity/id/{entity.Id}", new { disabled = true }, cancellationToken);
         }
 
@@ -76,7 +77,35 @@ public sealed class OpenBaoIdentityService(OpenBaoAdministrativeClient client) :
         var entity = await FindEntityAsync(username, cancellationToken);
         if (entity is not null)
         {
+            await RevokeEntityTokensAsync(entity.Id, cancellationToken);
             await client.DeleteAsync($"v1/identity/entity/id/{entity.Id}", cancellationToken);
+        }
+    }
+
+    private async Task RevokeEntityTokensAsync(string entityId, CancellationToken cancellationToken)
+    {
+        var accessors = await client.GetAsync("v1/auth/token/accessors?list=true", cancellationToken);
+        if (accessors?.RootElement.GetProperty("data").TryGetProperty("keys", out var keys) != true)
+        {
+            return;
+        }
+
+        foreach (var accessor in keys.EnumerateArray().Select(value => value.GetString()).Where(value => value is not null))
+        {
+            var lookup = await client.PostAsyncValue(
+                "v1/auth/token/lookup-accessor",
+                new { accessor },
+                cancellationToken);
+            var tokenEntity = lookup.RootElement.GetProperty("data").TryGetProperty("entity_id", out var entity)
+                ? entity.GetString()
+                : null;
+            if (string.Equals(tokenEntity, entityId, StringComparison.Ordinal))
+            {
+                await client.PostAsync(
+                    "v1/auth/token/revoke-accessor",
+                    new { accessor },
+                    cancellationToken);
+            }
         }
     }
 

@@ -30,7 +30,8 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
         var data = payload.Data ?? throw new InvalidOperationException("OpenBao returned no secret data.");
         return new SecretDocument(
             data.Values.ToDictionary(pair => pair.Key, pair => pair.Value.GetString() ?? string.Empty),
-            data.Metadata.Version);
+            data.Metadata.Version,
+            data.Metadata.CustomMetadata?.GetValueOrDefault("description"));
     }
 
     public async Task WriteAsync(
@@ -48,6 +49,16 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
         request.Content = JsonContent.Create(body);
         using var response = await client.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
+        if (document.Description is not null)
+        {
+            using var metadataRequest = CreateRequest(
+                HttpMethod.Post,
+                $"v1/{project}/metadata/{environment}/{path}");
+            metadataRequest.Content = JsonContent.Create(
+                new { custom_metadata = new Dictionary<string, string> { ["description"] = document.Description } });
+            using var metadataResponse = await client.SendAsync(metadataRequest, cancellationToken);
+            metadataResponse.EnsureSuccessStatusCode();
+        }
     }
 
     public async Task DeleteAsync(
@@ -149,7 +160,9 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
     private sealed record SecretPayload(
         [property: JsonPropertyName("data")] IReadOnlyDictionary<string, JsonElement> Values,
         [property: JsonPropertyName("metadata")] SecretMetadata Metadata);
-    private sealed record SecretMetadata([property: JsonPropertyName("version")] int Version);
+    private sealed record SecretMetadata(
+        [property: JsonPropertyName("version")] int Version,
+        [property: JsonPropertyName("custom_metadata")] IReadOnlyDictionary<string, string>? CustomMetadata);
     private sealed record MetadataResponse([property: JsonPropertyName("data")] MetadataPayload? Data);
     private sealed record MetadataPayload(
         [property: JsonPropertyName("versions")] IReadOnlyDictionary<string, MetadataVersion> Versions);

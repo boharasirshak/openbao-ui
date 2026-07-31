@@ -30,8 +30,9 @@ public sealed class OpenBaoProjectService(
             var metadata = await client.GetAsync(
                 $"v1/{options.Value.MetadataMount}/data/projects/{project}",
                 cancellationToken);
-            if (metadata?.RootElement.GetProperty("data").GetProperty("data")
-                    .TryGetProperty("description", out var descriptionValue) == true)
+            if (metadata?.RootElement.TryGetProperty("data", out var metadataEnvelope) == true
+                && metadataEnvelope.TryGetProperty("data", out var metadataData)
+                && metadataData.TryGetProperty("description", out var descriptionValue))
             {
                 description = descriptionValue.GetString() ?? string.Empty;
             }

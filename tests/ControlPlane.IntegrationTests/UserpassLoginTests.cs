@@ -32,7 +32,7 @@ public sealed class UserpassLoginTests : IAsyncLifetime
             "v1/sys/policies/acl/dev-writer",
             new
             {
-                policy = "path \"thorneai/data/development/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\"] }",
+                policy = "path \"thorneai/data/development/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\"] }\npath \"thorneai/metadata/development/*\" { capabilities = [\"read\", \"list\", \"update\"] }",
             });
         var create = await admin.PostAsJsonAsync(
             "v1/auth/userpass/users/alice",
@@ -64,7 +64,10 @@ public sealed class UserpassLoginTests : IAsyncLifetime
             ProjectId.Parse("thorneai"),
             EnvironmentId.Parse("development"),
             SecretPath.Parse("backend"),
-            new SecretDocument(new Dictionary<string, string> { ["DATABASE_URL"] = "secret-value" }, 0),
+            new SecretDocument(
+                new Dictionary<string, string> { ["DATABASE_URL"] = "secret-value" },
+                0,
+                "Backend development credentials"),
             expectedVersion: 0,
             cancellationToken: CancellationToken.None);
         var document = await engine.ReadAsync(
@@ -76,6 +79,7 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         Assert.NotNull(document);
         Assert.Equal("secret-value", document.Values["DATABASE_URL"]);
         Assert.Equal(1, document.Version);
+        Assert.Equal("Backend development credentials", document.Description);
     }
 
     [Fact]
@@ -242,11 +246,21 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         var bob = Assert.Single(members, member => member.Username == "bob");
         Assert.NotEmpty(bob.EntityId);
 
+        var bobSession = await new OpenBaoSessionService(client, options)
+            .LoginAsync("bob", "bob-password", CancellationToken.None);
         await identities.DisableAsync("bob", CancellationToken.None);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new OpenBaoSessionService(
                 client,
                 options)
             .LoginAsync("bob", "bob-password", CancellationToken.None));
+        await Assert.ThrowsAsync<HttpRequestException>(() => new OpenBaoSecretsEngine(
+                client,
+                new FixedTokenAccessor(bobSession.Token))
+            .ReadAsync(
+                ProjectId.Parse("thorneai"),
+                EnvironmentId.Parse("development"),
+                SecretPath.Parse("backend"),
+                CancellationToken.None));
     }
 
     [Fact]

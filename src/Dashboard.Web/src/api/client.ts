@@ -1,9 +1,9 @@
-import type {
-  ProjectResponse,
-  SecretDocumentResponse,
-  SecretVersionResponse,
-  SessionResponse,
-} from "./generated";
+import type { components } from "./generated";
+
+type ProjectResponse = components["schemas"]["ProjectResponse"];
+type SecretDocumentResponse = components["schemas"]["SecretDocumentResponse"];
+type SecretVersionResponse = components["schemas"]["SecretVersionResponse"];
+type SessionResponse = components["schemas"]["SessionResponse"];
 
 async function csrfToken(): Promise<string> {
   const response = await fetch("/api/auth/csrf", { credentials: "include" });
@@ -56,11 +56,12 @@ export async function writeSecret(
   path: string,
   values: Record<string, string>,
   expectedVersion: number,
+  description?: string,
 ): Promise<void> {
   const response = await unsafeRequest(secretUrl(project, environment, path), {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values, expectedVersion }),
+    body: JSON.stringify({ values, expectedVersion, description }),
   });
   if (!response.ok)
     throw new Error(response.status === 403 ? "Access denied." : "Secret update failed.");
@@ -130,13 +131,14 @@ export async function importSecrets(
   path: string,
   values: Record<string, string>,
   expectedVersion?: number,
+  description?: string,
 ): Promise<void> {
   const response = await unsafeRequest(
     `/api/projects/${encodeURIComponent(project)}/environments/${encodeURIComponent(environment)}/secrets/import/${path.split("/").map(encodeURIComponent).join("/")}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ values, expectedVersion }),
+      body: JSON.stringify({ values, expectedVersion, description }),
     },
   );
   if (!response.ok) throw new Error("Secret import failed.");

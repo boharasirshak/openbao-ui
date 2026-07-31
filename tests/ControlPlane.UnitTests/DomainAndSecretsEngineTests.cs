@@ -27,6 +27,16 @@ public sealed class DomainAndSecretsEngineTests
         Assert.Throws<ArgumentException>(() => EnvironmentId.Parse("prod/other"));
     }
 
+    [Theory]
+    [InlineData("sys")]
+    [InlineData("auth")]
+    [InlineData("identity")]
+    [InlineData("wrapper-metadata")]
+    public void Project_ids_reject_reserved_openbao_paths(string value)
+    {
+        Assert.Throws<ArgumentException>(() => ProjectId.Parse(value));
+    }
+
     [Fact]
     public async Task Read_maps_kv_v2_metadata_without_logging_secret_values()
     {
@@ -65,8 +75,8 @@ public sealed class DomainAndSecretsEngineTests
             expectedVersion: 7,
             cancellationToken: CancellationToken.None);
 
-        Assert.Equal(HttpMethod.Post, handler.LastRequest?.Method);
-        var payload = JsonDocument.Parse(handler.LastBody!);
+        Assert.Equal(HttpMethod.Post, handler.Requests[0].Method);
+        var payload = JsonDocument.Parse(handler.Bodies[0]);
         Assert.Equal(7, payload.RootElement.GetProperty("options").GetProperty("cas").GetInt32());
     }
 
@@ -111,6 +121,8 @@ public sealed class DomainAndSecretsEngineTests
     {
         public HttpRequestMessage? LastRequest { get; private set; }
         public string? LastBody { get; private set; }
+        public List<HttpRequestMessage> Requests { get; } = [];
+        public List<string> Bodies { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -120,6 +132,11 @@ public sealed class DomainAndSecretsEngineTests
             LastBody = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            Requests.Add(request);
+            if (LastBody is not null)
+            {
+                Bodies.Add(LastBody);
+            }
             return responder(request);
         }
     }

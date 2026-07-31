@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using ControlPlane.Application;
@@ -36,6 +37,15 @@ builder.Services
     .AddStandardResilienceHandler();
 builder.Services.AddRateLimiter(options =>
 {
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     options.AddFixedWindowLimiter("login", limiterOptions =>
     {
         limiterOptions.PermitLimit = 5;
@@ -81,7 +91,14 @@ app.UseExceptionHandler(errorApplication =>
 {
     errorApplication.Run(async context =>
     {
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        context.Response.StatusCode = exception is HttpRequestException { StatusCode: HttpStatusCode.Forbidden }
+            ? StatusCodes.Status403Forbidden
+            : exception is HttpRequestException { StatusCode: HttpStatusCode.NotFound }
+                ? StatusCodes.Status404NotFound
+                : exception is HttpRequestException { StatusCode: HttpStatusCode.Conflict }
+                    ? StatusCodes.Status409Conflict
+                    : StatusCodes.Status500InternalServerError;
         await context.Response.WriteAsJsonAsync(new { error = "Request failed." });
     });
 });
@@ -181,7 +198,8 @@ app.MapPost(
                 return Results.Unauthorized();
             }
         })
-    .RequireRateLimiting("login");
+    .RequireRateLimiting("login")
+    .Produces<SessionResponse>();
 
 app.MapPost(
         "/api/auth/logout",
@@ -196,7 +214,8 @@ app.MapPost(
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.NoContent();
         })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .Produces(StatusCodes.Status204NoContent);
 
 app.MapGet(
         "/api/auth/session",
@@ -207,7 +226,8 @@ app.MapGet(
 
             return Results.Ok(new SessionResponse(expiresAt));
         })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .Produces<SessionResponse>();
 
 var administration = app.MapGroup("/api/admin")
     .RequireAuthorization("wrapper-admin");
@@ -219,7 +239,7 @@ administration.MapGet("/projects", async (IProjectService service, CancellationT
         project.Id.Value,
         project.Description,
         project.Environments.Select(environment => environment.Value).ToList())));
-});
+}).Produces<IReadOnlyList<ProjectResponse>>();
 
 administration.MapPost(
     "/projects/{project}",
@@ -244,7 +264,7 @@ administration.MapPost(
         {
             return Results.BadRequest();
         }
-    });
+    }).Produces<ProjectResponse>();
 
 administration.MapGet(
     "/audit/recent",
@@ -274,7 +294,7 @@ administration.MapGet("/members", async (IIdentityService service, CancellationT
         member.EntityId,
         member.Disabled,
         member.Policies)));
-});
+}).Produces<IReadOnlyList<MemberResponse>>();
 
 administration.MapPost(
     "/members",
@@ -335,7 +355,7 @@ administration.MapGet("/roles", async (IPolicyService service, CancellationToken
         role.Project,
         role.Environment,
         role.ReadOnly)));
-});
+}).Produces<IReadOnlyList<RoleResponse>>();
 
 administration.MapPost(
     "/roles",
@@ -345,7 +365,7 @@ administration.MapPost(
             new Role(request.Name, request.Project, request.Environment, request.ReadOnly),
             cancellationToken);
         return Results.NoContent();
-    });
+    }).Produces(StatusCodes.Status204NoContent);
 
 administration.MapDelete(
     "/roles/{roleName}",
@@ -380,7 +400,7 @@ administration.MapPost(
             identity.ReadOnly,
             identity.TokenTtlSeconds,
             identity.TokenUses));
-    });
+    }).Produces<MachineIdentityResponse>();
 
 administration.MapGet("/machine-identities", async (IMachineIdentityService service, CancellationToken cancellationToken) =>
 {
@@ -393,7 +413,7 @@ administration.MapGet("/machine-identities", async (IMachineIdentityService serv
         identity.ReadOnly,
         identity.TokenTtlSeconds,
         identity.TokenUses)));
-});
+}).Produces<IReadOnlyList<MachineIdentityResponse>>();
 
 administration.MapPost(
     "/machine-identities/{roleName}/secret-id",
@@ -428,7 +448,7 @@ app.MapGet(
         {
             return Results.BadRequest();
         }
-    }).RequireAuthorization();
+    }).RequireAuthorization().Produces<DatabaseCredentialResponse>();
 
 secrets.MapGet(
     "/list/{**folder}",
@@ -452,7 +472,7 @@ secrets.MapGet(
         {
             return Results.BadRequest();
         }
-    });
+    }).Produces<IReadOnlyList<SecretEntry>>();
 
 secrets.MapGet(
     "/versions/{**path}",
@@ -479,7 +499,7 @@ secrets.MapGet(
         {
             return Results.BadRequest();
         }
-    });
+    }).Produces<IReadOnlyList<SecretVersionResponse>>();
 
 secrets.MapPost(
     "/restore/{**path}",
@@ -583,7 +603,7 @@ secrets.MapPost(
             ProjectId.Parse(project),
             EnvironmentId.Parse(environment),
             SecretPath.Parse(path),
-            new SecretDocument(request.Values, 0),
+            new SecretDocument(request.Values, 0, request.Description),
             request.ExpectedVersion,
             cancellationToken);
         return Results.NoContent();
@@ -608,13 +628,13 @@ secrets.MapGet(
 
             return document is null
                 ? Results.NotFound()
-                : Results.Ok(new SecretDocumentResponse(document.Values, document.Version));
+                : Results.Ok(new SecretDocumentResponse(document.Values, document.Version, document.Description));
         }
         catch (ArgumentException)
         {
             return Results.BadRequest();
         }
-    });
+    }).Produces<SecretDocumentResponse>();
 
 secrets.MapPut(
     "/{**path}",
@@ -637,7 +657,7 @@ secrets.MapPut(
                 ProjectId.Parse(project),
                 EnvironmentId.Parse(environment),
                 SecretPath.Parse(path),
-                new SecretDocument(request.Values, 0),
+                new SecretDocument(request.Values, 0, request.Description),
                 request.ExpectedVersion,
                 cancellationToken);
 

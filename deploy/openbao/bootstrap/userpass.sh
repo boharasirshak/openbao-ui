@@ -16,6 +16,6 @@ fi
 
 curl -fsS -H "X-Vault-Token: $ROOT_TOKEN" -X POST http://openbao:8200/v1/sys/auth/userpass -d '{"type":"userpass"}' >/dev/null
 curl -fsS -H "X-Vault-Token: $ROOT_TOKEN" -X PUT http://openbao:8200/v1/sys/policies/acl/wrapper-admin \
-  -d '{"policy":"path \"sys/mounts/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\npath \"sys/policies/acl/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\npath \"auth/userpass/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\npath \"auth/approle/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }"}' >/dev/null
+  -d '{"policy":"path \"sys/mounts/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\npath \"sys/policies/acl/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\npath \"auth/userpass/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\npath \"auth/approle/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\", \"list\"] }\npath \"auth/token/accessors\" { capabilities = [\"list\"] }\npath \"auth/token/lookup-accessor\" { capabilities = [\"update\"] }\npath \"auth/token/revoke-accessor\" { capabilities = [\"update\"] }"}' >/dev/null
 curl -fsS -H "X-Vault-Token: $ROOT_TOKEN" -X POST http://openbao:8200/v1/auth/userpass/users/admin \
   -d '{"password":"admin-only-change-me","policies":["wrapper-admin"],"token_ttl":"30m"}' >/dev/null

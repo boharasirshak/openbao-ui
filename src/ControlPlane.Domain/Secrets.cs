@@ -6,7 +6,7 @@ public readonly record struct ProjectId
 
     private ProjectId(string value) => Value = value;
 
-    public static ProjectId Parse(string value) => new(IdentifierValidation.ValidateIdentifier(value, nameof(value)));
+    public static ProjectId Parse(string value) => new(IdentifierValidation.ValidateProject(value));
 
     public override string ToString() => Value;
 }
@@ -42,7 +42,10 @@ public sealed record SecretPath
     public override string ToString() => Value;
 }
 
-public sealed record SecretDocument(IReadOnlyDictionary<string, string> Values, int Version);
+public sealed record SecretDocument(
+    IReadOnlyDictionary<string, string> Values,
+    int Version,
+    string? Description = null);
 public sealed record SecretVersion(int Version, DateTimeOffset? DeletedAt, bool Destroyed);
 public sealed record SecretEntry(string Name, bool IsFolder);
 public sealed record OpenBaoSession(
@@ -88,6 +91,25 @@ public sealed record DynamicDatabaseCredential(
 
 file static class IdentifierValidation
 {
+    private static readonly string[] ReservedProjectNames =
+    [
+        "auth",
+        "identity",
+        "sys",
+        "wrapper-metadata",
+    ];
+
+    public static string ValidateProject(string? value)
+    {
+        var identifier = ValidateIdentifier(value, nameof(value));
+        if (ReservedProjectNames.Contains(identifier, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Project name is reserved.", nameof(value));
+        }
+
+        return identifier;
+    }
+
     public static string ValidateIdentifier(string? value, string parameterName)
     {
         if (!IsValidSegment(value))

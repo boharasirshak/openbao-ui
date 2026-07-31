@@ -33,7 +33,11 @@ import {
   undeleteSecret,
   writeSecret,
 } from "./api/client";
-import type { ProjectResponse, SecretVersionResponse, SessionResponse } from "./api/generated";
+import type { components } from "./api/generated";
+
+type ProjectResponse = components["schemas"]["ProjectResponse"];
+type SecretVersionResponse = components["schemas"]["SecretVersionResponse"];
+type SessionResponse = components["schemas"]["SessionResponse"];
 
 type Values = Record<string, string>;
 
@@ -87,6 +91,7 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
   const [path, setPath] = useState("backend");
   const [values, setValues] = useState<Values>({});
   const [bulkValues, setBulkValues] = useState("{}");
+  const [description, setDescription] = useState("");
   const [version, setVersion] = useState(0);
   const [versions, setVersions] = useState<SecretVersionResponse[]>([]);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
@@ -110,7 +115,8 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
     if (secretQuery.data) {
       setValues(secretQuery.data.document.values);
       setBulkValues(JSON.stringify(secretQuery.data.document.values, null, 2));
-      setVersion(secretQuery.data.document.version);
+      setVersion(Number(secretQuery.data.document.version));
+      setDescription(secretQuery.data.document.description ?? "");
       setVersions(secretQuery.data.versions);
       setRevealed({});
     }
@@ -134,7 +140,7 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
   async function save() {
     try {
       const nextValues = JSON.parse(bulkValues) as Values;
-      await writeSecret(project, environment, path, nextValues, version);
+      await writeSecret(project, environment, path, nextValues, version, description);
       setValues(nextValues);
       setMessage("Saved.");
       await load();
@@ -175,7 +181,7 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
               return [line.slice(0, index), line.slice(index + 1).replace(/^"|"$/g, "")];
             }),
         );
-    await importSecrets(project, environment, path, imported, version || undefined);
+    await importSecrets(project, environment, path, imported, version || undefined, description);
     await load();
   }
 
@@ -277,6 +283,13 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
           ))}
         </Breadcrumbs>
         <TextField
+          label="Description"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          fullWidth
+          sx={{ mb: 2 }}
+        />
+        <TextField
           label="Bulk JSON editor"
           value={bulkValues}
           onChange={(event) => setBulkValues(event.target.value)}
@@ -360,8 +373,12 @@ function Dashboard({ session, onLogout }: { session: SessionResponse; onLogout: 
               <Stack key={item.version} direction="row" spacing={2} alignItems="center">
                 <Typography>Version {item.version}</Typography>
                 <Typography color="text.secondary">{item.deletedAt ?? "active"}</Typography>
-                {item.deletedAt && <Button onClick={() => undelete(item.version)}>Undelete</Button>}
-                {!item.deletedAt && <Button onClick={() => restore(item.version)}>Restore</Button>}
+                {item.deletedAt && (
+                  <Button onClick={() => undelete(Number(item.version))}>Undelete</Button>
+                )}
+                {!item.deletedAt && (
+                  <Button onClick={() => restore(Number(item.version))}>Restore</Button>
+                )}
               </Stack>
             ))}
           </>
