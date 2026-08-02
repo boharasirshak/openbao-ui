@@ -1,16 +1,20 @@
 # OpenBao Developer Secrets Dashboard
 
-Self-hosted internal secrets management for one organization. OpenBao is the only persistent backend; the ASP.NET API and React dashboard do not use an application database.
+Self-hosted internal secrets management for one organization. OpenBao is the only persistent backend; the ASP.NET API and Next.js dashboard do not use an application database.
 
 ## Local development
 
 ```bash
 docker compose -f deploy/docker-compose/docker-compose.yml up
-dotnet run --project src/ControlPlane.Api/ControlPlane.Api.csproj
+dotnet run --project src/ControlPlane.Api/ControlPlane.Api.csproj --launch-profile local
 cd src/Dashboard.Web && npm install && npm run dev
 ```
 
-For the local browser dashboard, run the API with `ASPNETCORE_ENVIRONMENT=LocalDevelopment` on port `5000`, then open `http://localhost:5173`. This profile is only for disposable local data; normal development and production retain HTTPS-only cookies.
+Then open `http://localhost:3000`. The `local` launch profile runs the API on `http://localhost:5000` with `ASPNETCORE_ENVIRONMENT=LocalDevelopment`, and the dashboard proxies `/api` to it so the session cookie and antiforgery token stay same-origin. Point the proxy elsewhere with `API_ORIGIN`. This profile is only for disposable local data; normal development and production retain HTTPS-only cookies.
+
+## Dashboard
+
+The dashboard covers every control-plane endpoint: browsing folders and secrets, editing keys with masked values, importing and exporting `.env`/JSON, version history with roll back and undelete, projects, members, roles, machine identities, the audit log, and short-lived database credentials.
 
 The disposable OpenBao bootstrap creates `admin` / `admin-only-change-me`. Change or remove these credentials before using any shared environment. The development listener is HTTP by design; production must use HTTPS and a separately managed control-plane identity.
 

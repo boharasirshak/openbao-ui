@@ -1,0 +1,813 @@
+"use client";
+
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Alert,
+  Box,
+  Breadcrumbs,
+  Button,
+  Chip,
+  Collapse,
+  IconButton,
+  InputAdornment,
+  Menu,
+  MenuItem,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import FolderIcon from "@mui/icons-material/FolderOutlined";
+import FileIcon from "@mui/icons-material/DescriptionOutlined";
+import SearchIcon from "@mui/icons-material/SearchOutlined";
+import RefreshIcon from "@mui/icons-material/RefreshOutlined";
+import VisibilityIcon from "@mui/icons-material/VisibilityOutlined";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOffOutlined";
+import DeleteIcon from "@mui/icons-material/DeleteOutlineOutlined";
+import AddIcon from "@mui/icons-material/AddOutlined";
+import UploadIcon from "@mui/icons-material/UploadFileOutlined";
+import DownloadIcon from "@mui/icons-material/DownloadOutlined";
+import HistoryIcon from "@mui/icons-material/HistoryOutlined";
+import RestoreIcon from "@mui/icons-material/SettingsBackupRestoreOutlined";
+import UndoIcon from "@mui/icons-material/UndoOutlined";
+import { EmptyState, LoadingRow, PageHeader } from "@/components/AppShell";
+import EnvironmentChip from "@/components/EnvironmentChip";
+import FormDialog from "@/components/FormDialog";
+import { CopyButton } from "@/components/SecretValue";
+import { downloadText, isValidKey, parseSecretFile } from "@/lib/dotenv";
+import { mono } from "@/lib/theme";
+import {
+  deleteSecret,
+  errorMessage,
+  exportSecrets,
+  importSecrets,
+  listSecretEntries,
+  listVersions,
+  readSecret,
+  restoreSecret,
+  undeleteSecret,
+  writeSecret,
+} from "@/lib/client";
+
+export default function SecretsPage() {
+  const params = useParams<{ project: string; environment: string; path?: string[] }>();
+  const project = String(params.project);
+  const environment = String(params.environment);
+  const segments = (params.path ?? []).map(String);
+  const path = segments.join("/");
+  const base = `/projects/${encodeURIComponent(project)}/environments/${encodeURIComponent(environment)}/secrets`;
+
+  const queryClient = useQueryClient();
+  const entries = useQuery({
+    queryKey: ["entries", project, environment, path],
+    queryFn: () => listSecretEntries(project, environment, path),
+  });
+
+  const folders = (entries.data ?? []).filter((entry) => entry.isFolder);
+  const documents = (entries.data ?? []).filter((entry) => !entry.isFolder);
+
+  return (
+    <>
+      <PageHeader
+        title={
+          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Breadcrumbs sx={{ "& a:hover": { textDecoration: "underline" } }}>
+              <Link href={`/projects/${encodeURIComponent(project)}`}>{project}</Link>
+              {segments.length === 0 ? (
+                <Typography variant="h5">{environment}</Typography>
+              ) : (
+                <Link href={base}>{environment}</Link>
+              )}
+              {segments.map((segment, index) => {
+                const href = `${base}/${segments
+                  .slice(0, index + 1)
+                  .map(encodeURIComponent)
+                  .join("/")}`;
+                return index === segments.length - 1 ? (
+                  <Typography key={href} variant="h5">
+                    {segment}
+                  </Typography>
+                ) : (
+                  <Link key={href} href={href}>
+                    {segment}
+                  </Link>
+                );
+              })}
+            </Breadcrumbs>
+            <EnvironmentChip environment={environment} />
+          </Stack>
+        }
+        description={path ? `Path ${path}` : "Top level of this environment"}
+        actions={
+          <Tooltip title="Reload">
+            <IconButton
+              onClick={() => queryClient.invalidateQueries({ queryKey: ["entries"] })}
+              aria-label="Reload"
+            >
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        }
+      />
+
+      {environment === "production" && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          This is production. Saved changes take effect immediately.
+        </Alert>
+      )}
+
+      {entries.isError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {errorMessage(entries.error, "This folder could not be listed.")}
+        </Alert>
+      )}
+
+      {(folders.length > 0 || documents.length > 0 || entries.isLoading) && (
+        <Paper sx={{ mb: 3, overflow: "hidden" }}>
+          {entries.isLoading ? (
+            <LoadingRow label="Listing this folder…" />
+          ) : (
+            <Table size="small">
+              <TableBody>
+                {[...folders, ...documents].map((entry) => (
+                  <TableRow key={`${entry.isFolder}-${entry.name}`} hover>
+                    <TableCell width={44}>
+                      {entry.isFolder ? (
+                        <FolderIcon fontSize="small" sx={{ color: "primary.main" }} />
+                      ) : (
+                        <FileIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Box
+                        component={Link}
+                        href={`${base}/${[...segments, entry.name].map(encodeURIComponent).join("/")}`}
+                        sx={{
+                          fontFamily: mono,
+                          fontSize: 13,
+                          display: "block",
+                          "&:hover": { color: "primary.main" },
+                        }}
+                      >
+                        {entry.name}
+                      </Box>
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: "text.secondary", fontSize: 12 }}>
+                      {entry.isFolder ? "folder" : "secret"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Paper>
+      )}
+
+      {path ? (
+        <SecretEditor
+          key={`${project}/${environment}/${path}`}
+          project={project}
+          environment={environment}
+          path={path}
+        />
+      ) : (
+        folders.length === 0 &&
+        documents.length === 0 &&
+        !entries.isLoading && (
+          <Paper>
+            <EmptyState
+              title="Nothing here yet"
+              hint="Add a folder or secret name to the address bar to create the first one."
+            />
+          </Paper>
+        )
+      )}
+    </>
+  );
+}
+
+function SecretEditor({
+  project,
+  environment,
+  path,
+}: {
+  project: string;
+  environment: string;
+  path: string;
+}) {
+  const queryClient = useQueryClient();
+
+  const secret = useQuery({
+    queryKey: ["secret", project, environment, path],
+    queryFn: () => readSecret(project, environment, path),
+  });
+
+  const [draft, setDraft] = useState<Record<string, string> | null>(null);
+  const [draftDescription, setDraftDescription] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const [revealAll, setRevealAll] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [exportMenu, setExportMenu] = useState<HTMLElement | null>(null);
+  const [showVersions, setShowVersions] = useState(false);
+
+  const stored = secret.data?.values ?? null;
+  const values: Record<string, string> = draft ?? stored ?? {};
+  const description = draftDescription ?? secret.data?.description ?? "";
+  const currentVersion = Number(secret.data?.version ?? 0);
+  const dirty = draft !== null || draftDescription !== null;
+
+  const keys = useMemo(
+    () =>
+      Object.keys(values)
+        .filter((key) => key.toLowerCase().includes(filter.trim().toLowerCase()))
+        .sort((left, right) => left.localeCompare(right)),
+    [values, filter],
+  );
+
+  const versions = useQuery({
+    queryKey: ["versions", project, environment, path],
+    queryFn: () => listVersions(project, environment, path),
+    enabled: showVersions,
+  });
+
+  function update(next: Record<string, string>) {
+    setDraft(next);
+    setError("");
+    setNotice("");
+  }
+
+  async function reload() {
+    setDraft(null);
+    setDraftDescription(null);
+    await queryClient.invalidateQueries({ queryKey: ["secret", project, environment, path] });
+    await queryClient.invalidateQueries({ queryKey: ["versions", project, environment, path] });
+    await queryClient.invalidateQueries({ queryKey: ["entries"] });
+  }
+
+  async function save() {
+    const invalid = Object.keys(values).find((key) => !isValidKey(key));
+    if (invalid) {
+      setError(
+        `"${invalid}" is not a valid key. Start with a letter or underscore, then letters, digits and underscores.`,
+      );
+      return;
+    }
+    if (Object.keys(values).length === 0) {
+      setError("A secret needs at least one key. Use Delete secret to remove it entirely.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    try {
+      // The version doubles as a compare-and-set check: 0 creates, anything else
+      // requires that nobody has written since this page loaded.
+      await writeSecret(
+        project,
+        environment,
+        path,
+        values,
+        currentVersion,
+        description || undefined,
+      );
+      await reload();
+      setNotice("Saved.");
+    } catch (saveError) {
+      setError(errorMessage(saveError, "The secret could not be saved."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeDocument() {
+    if (!window.confirm(`Delete every key at "${path}"? Previous versions stay recoverable.`)) {
+      return;
+    }
+    try {
+      await deleteSecret(project, environment, path);
+      await reload();
+      setNotice("Secret deleted. Older versions can still be restored.");
+    } catch (deleteError) {
+      setError(errorMessage(deleteError, "The secret could not be deleted."));
+    }
+  }
+
+  async function download(format: "env" | "json") {
+    setExportMenu(null);
+    try {
+      const contents = await exportSecrets(project, environment, path, format);
+      const name = path.replaceAll("/", "-");
+      downloadText(format === "env" ? `${name}.env` : `${name}.json`, contents);
+    } catch (exportError) {
+      setError(errorMessage(exportError, "The export failed."));
+    }
+  }
+
+  if (secret.isLoading) return <LoadingRow label="Loading secret…" />;
+
+  if (secret.isError) {
+    return (
+      <Alert severity="error">
+        {errorMessage(secret.error, "The secret could not be loaded.")}
+      </Alert>
+    );
+  }
+
+  if (stored === null && draft === null) {
+    return (
+      <Paper sx={{ p: 4 }}>
+        <Stack spacing={2} alignItems="flex-start">
+          <Typography variant="h6">No secret at this path</Typography>
+          <Typography color="text.secondary" variant="body2">
+            {path} holds no values yet. Create one, or import an existing .env file.
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDraft({})}>
+              Create secret here
+            </Button>
+            <Button startIcon={<UploadIcon />} onClick={() => setImporting(true)}>
+              Import
+            </Button>
+          </Stack>
+        </Stack>
+        <ImportDialog
+          open={importing}
+          text={importText}
+          onText={setImportText}
+          onClose={() => {
+            setImporting(false);
+            setImportText("");
+          }}
+          onSubmit={async (parsed) => {
+            await importSecrets(project, environment, path, parsed, 0);
+            await reload();
+            setNotice("Import complete.");
+          }}
+        />
+      </Paper>
+    );
+  }
+
+  return (
+    <Paper sx={{ overflow: "hidden" }}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1}
+        alignItems={{ md: "center" }}
+        sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}
+      >
+        <TextField
+          placeholder="Filter keys"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          sx={{ flex: 1, minWidth: 200 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <Chip size="small" variant="outlined" label={`v${currentVersion}`} />
+        <Button
+          size="small"
+          startIcon={revealAll ? <VisibilityOffIcon /> : <VisibilityIcon />}
+          onClick={() => {
+            setRevealAll(!revealAll);
+            setRevealed({});
+          }}
+        >
+          {revealAll ? "Hide all" : "Reveal all"}
+        </Button>
+        <Button size="small" startIcon={<UploadIcon />} onClick={() => setImporting(true)}>
+          Import
+        </Button>
+        <Button
+          size="small"
+          startIcon={<DownloadIcon />}
+          onClick={(event) => setExportMenu(event.currentTarget)}
+        >
+          Export
+        </Button>
+        <Menu anchorEl={exportMenu} open={Boolean(exportMenu)} onClose={() => setExportMenu(null)}>
+          <MenuItem onClick={() => download("env")}>Download .env</MenuItem>
+          <MenuItem onClick={() => download("json")}>Download JSON</MenuItem>
+        </Menu>
+        <Button
+          size="small"
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setAdding(true)}
+        >
+          Add key
+        </Button>
+      </Stack>
+
+      {(error || notice) && (
+        <Box sx={{ px: 2, pt: 2 }}>
+          {error ? (
+            <Alert severity="error" onClose={() => setError("")}>
+              {error}
+            </Alert>
+          ) : (
+            <Alert severity="success" onClose={() => setNotice("")}>
+              {notice}
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell width="32%">Key</TableCell>
+            <TableCell>Value</TableCell>
+            <TableCell width={132} align="right">
+              Actions
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {keys.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={3}>
+                <EmptyState
+                  title={filter ? "No keys match that filter" : "This secret has no keys yet"}
+                  hint={filter ? undefined : "Use Add key to create the first one."}
+                />
+              </TableCell>
+            </TableRow>
+          )}
+          {keys.map((key) => {
+            const visible = revealAll || Boolean(revealed[key]);
+            return (
+              <TableRow key={key} hover>
+                <TableCell sx={{ fontFamily: mono, fontSize: 13, wordBreak: "break-all" }}>
+                  {key}
+                </TableCell>
+                <TableCell>
+                  <TextField
+                    value={values[key]}
+                    type={visible ? "text" : "password"}
+                    onChange={(event) => update({ ...values, [key]: event.target.value })}
+                    fullWidth
+                    autoComplete="off"
+                    slotProps={{ htmlInput: { style: { fontFamily: mono, fontSize: 13 } } }}
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <Stack direction="row" justifyContent="flex-end">
+                    <Tooltip title={visible ? "Hide" : "Reveal"}>
+                      <IconButton
+                        size="small"
+                        onClick={() => setRevealed({ ...revealed, [key]: !visible })}
+                      >
+                        {visible ? (
+                          <VisibilityOffIcon fontSize="small" />
+                        ) : (
+                          <VisibilityIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                    <CopyButton value={values[key]} title="Copy value" />
+                    <Tooltip title="Remove key">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          const next = { ...values };
+                          delete next[key];
+                          update(next);
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+
+      <Stack spacing={2} sx={{ p: 2, borderTop: 1, borderColor: "divider" }}>
+        <TextField
+          label="Description"
+          value={description}
+          onChange={(event) => setDraftDescription(event.target.value)}
+          helperText="Stored as OpenBao custom metadata. Never put a secret value here."
+          fullWidth
+        />
+
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Button variant="contained" onClick={save} disabled={!dirty || saving}>
+            {saving ? "Saving…" : dirty ? "Save changes" : "Saved"}
+          </Button>
+          <Button
+            onClick={() => {
+              setDraft(null);
+              setDraftDescription(null);
+              setError("");
+            }}
+            disabled={!dirty || saving}
+          >
+            Discard
+          </Button>
+          <Button startIcon={<HistoryIcon />} onClick={() => setShowVersions((value) => !value)}>
+            {showVersions ? "Hide history" : "Version history"}
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button color="error" startIcon={<DeleteIcon />} onClick={removeDocument}>
+            Delete secret
+          </Button>
+        </Stack>
+
+        <Collapse in={showVersions} unmountOnExit>
+          <VersionHistory
+            versions={versions.data ?? []}
+            loading={versions.isLoading}
+            error={versions.error}
+            currentVersion={currentVersion}
+            onRestore={async (version) => {
+              await restoreSecret(project, environment, path, version);
+              await reload();
+              setNotice(`Rolled back to version ${version}.`);
+            }}
+            onUndelete={async (version) => {
+              await undeleteSecret(project, environment, path, version);
+              await reload();
+              setNotice(`Version ${version} is no longer deleted.`);
+            }}
+            onError={setError}
+          />
+        </Collapse>
+      </Stack>
+
+      {dirty && (
+        <Box
+          sx={{
+            position: "sticky",
+            bottom: 0,
+            px: 2,
+            py: 1.5,
+            bgcolor: "action.selected",
+            borderTop: 1,
+            borderColor: "divider",
+          }}
+        >
+          <Typography variant="body2">
+            Unsaved changes. They stay in this browser tab until you save.
+          </Typography>
+        </Box>
+      )}
+
+      <FormDialog
+        open={adding}
+        title="Add key"
+        submitLabel="Add"
+        disabled={!isValidKey(newKey)}
+        onClose={() => {
+          setAdding(false);
+          setNewKey("");
+          setNewValue("");
+        }}
+        onSubmit={async () => {
+          if (Object.prototype.hasOwnProperty.call(values, newKey)) {
+            throw new Error(`${newKey} already exists in this secret.`);
+          }
+          update({ ...values, [newKey]: newValue });
+        }}
+      >
+        <TextField
+          label="Key"
+          value={newKey}
+          onChange={(event) => setNewKey(event.target.value)}
+          error={newKey.length > 0 && !isValidKey(newKey)}
+          helperText="Start with a letter or underscore, then letters, digits and underscores."
+          autoFocus
+          required
+        />
+        <TextField
+          label="Value"
+          value={newValue}
+          onChange={(event) => setNewValue(event.target.value)}
+          multiline
+          minRows={2}
+          slotProps={{ htmlInput: { style: { fontFamily: mono, fontSize: 13 } } }}
+        />
+        <Alert severity="info">The key joins your draft. Save to write it to OpenBao.</Alert>
+      </FormDialog>
+
+      <ImportDialog
+        open={importing}
+        text={importText}
+        onText={setImportText}
+        onClose={() => {
+          setImporting(false);
+          setImportText("");
+        }}
+        onSubmit={async (parsed) => {
+          await importSecrets(project, environment, path, { ...values, ...parsed }, currentVersion);
+          await reload();
+          setNotice(`Imported ${Object.keys(parsed).length} key(s).`);
+        }}
+      />
+    </Paper>
+  );
+}
+
+function ImportDialog({
+  open,
+  text,
+  onText,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  text: string;
+  onText: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (values: Record<string, string>) => Promise<void>;
+}) {
+  const parsed = useMemo(() => {
+    if (!text.trim()) return null;
+    try {
+      return parseSecretFile(text);
+    } catch {
+      return null;
+    }
+  }, [text]);
+
+  const invalidKeys = Object.keys(parsed ?? {}).filter((key) => !isValidKey(key));
+  const count = Object.keys(parsed ?? {}).length;
+
+  return (
+    <FormDialog
+      open={open}
+      title="Import secrets"
+      submitLabel="Import"
+      disabled={count === 0 || invalidKeys.length > 0}
+      onClose={onClose}
+      onSubmit={async () => {
+        if (!parsed) throw new Error("There is nothing to import.");
+        await onSubmit(parsed);
+      }}
+    >
+      <Button component="label" startIcon={<UploadIcon />} variant="outlined">
+        Choose a .env or .json file
+        <input
+          type="file"
+          accept=".env,.json,text/plain,application/json"
+          hidden
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (file) onText(await file.text());
+            event.target.value = "";
+          }}
+        />
+      </Button>
+      <TextField
+        label="Or paste .env / JSON"
+        value={text}
+        onChange={(event) => onText(event.target.value)}
+        multiline
+        minRows={6}
+        slotProps={{ htmlInput: { style: { fontFamily: mono, fontSize: 13 } } }}
+      />
+      {text.trim() && !parsed && <Alert severity="error">That is not valid .env or JSON.</Alert>}
+      {invalidKeys.length > 0 && (
+        <Alert severity="error">
+          These keys are not allowed: {invalidKeys.slice(0, 5).join(", ")}
+          {invalidKeys.length > 5 ? "…" : ""}
+        </Alert>
+      )}
+      {count > 0 && invalidKeys.length === 0 && (
+        <Alert severity="info">
+          {count} key(s) ready. Keys with the same name are replaced; the rest are kept.
+        </Alert>
+      )}
+    </FormDialog>
+  );
+}
+
+function VersionHistory({
+  versions,
+  loading,
+  error,
+  currentVersion,
+  onRestore,
+  onUndelete,
+  onError,
+}: {
+  versions: { version: number | string; deletedAt: null | string; destroyed: boolean }[];
+  loading: boolean;
+  error: unknown;
+  currentVersion: number;
+  onRestore: (version: number) => Promise<void>;
+  onUndelete: (version: number) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState<number | null>(null);
+
+  async function run(version: number, action: () => Promise<void>) {
+    setBusy(version);
+    try {
+      await action();
+    } catch (actionError) {
+      onError(errorMessage(actionError, "That version action failed."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (loading) return <LoadingRow label="Loading version history…" />;
+  if (error) {
+    return <Alert severity="error">{errorMessage(error, "Version history is unavailable.")}</Alert>;
+  }
+  if (versions.length === 0) return <EmptyState title="No version history" />;
+
+  const sorted = [...versions].sort((left, right) => Number(right.version) - Number(left.version));
+
+  return (
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell width={90}>Version</TableCell>
+          <TableCell>Status</TableCell>
+          <TableCell align="right">Actions</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {sorted.map((entry) => {
+          const version = Number(entry.version);
+          const isCurrent = version === currentVersion;
+          return (
+            <TableRow key={version} hover>
+              <TableCell sx={{ fontFamily: mono }}>v{version}</TableCell>
+              <TableCell>
+                {entry.destroyed ? (
+                  <Chip size="small" color="error" label="destroyed" />
+                ) : entry.deletedAt ? (
+                  <Chip
+                    size="small"
+                    color="warning"
+                    label={`deleted ${new Date(entry.deletedAt).toLocaleString()}`}
+                  />
+                ) : isCurrent ? (
+                  <Chip size="small" color="success" label="current" />
+                ) : (
+                  <Chip size="small" variant="outlined" label="available" />
+                )}
+              </TableCell>
+              <TableCell align="right">
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  {entry.deletedAt && !entry.destroyed && (
+                    <Button
+                      size="small"
+                      startIcon={<UndoIcon />}
+                      disabled={busy === version}
+                      onClick={() => run(version, () => onUndelete(version))}
+                    >
+                      Undelete
+                    </Button>
+                  )}
+                  {!entry.destroyed && !isCurrent && (
+                    <Button
+                      size="small"
+                      startIcon={<RestoreIcon />}
+                      disabled={busy === version}
+                      onClick={() => run(version, () => onRestore(version))}
+                    >
+                      Roll back
+                    </Button>
+                  )}
+                </Stack>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
