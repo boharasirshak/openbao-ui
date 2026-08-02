@@ -1,12 +1,21 @@
+using System.Text.RegularExpressions;
 using ControlPlane.Application;
 using ControlPlane.Domain;
 
 namespace ControlPlane.Infrastructure.OpenBao;
 
-public sealed class OpenBaoMachineIdentityService(
+public sealed partial class OpenBaoMachineIdentityService(
     OpenBaoAdministrativeClient client,
     IPolicyService policyService) : IMachineIdentityService
 {
+    /// <summary>
+    /// AppRole stores no scope of its own, so the generated runtime policy is the
+    /// only record of which project and environment a machine may reach.
+    /// </summary>
+    [GeneratedRegex(
+        """path\s+"(?<project>[^/"]+)/data/(?<environment>[^/"]+)/\*"\s*\{\s*capabilities\s*=\s*\[(?<capabilities>[^\]]*)\]""")]
+    private static partial Regex ScopePattern();
+
     public async Task<IReadOnlyList<MachineIdentity>> ListAsync(CancellationToken cancellationToken)
     {
         var roles = await client.GetAsync("v1/auth/approle/role?list=true", cancellationToken);
@@ -24,17 +33,51 @@ public sealed class OpenBaoMachineIdentityService(
             var role = config?.RootElement.GetProperty("data");
             var roleId = await client.GetAsync($"v1/auth/approle/role/{Uri.EscapeDataString(key)}/role-id", cancellationToken);
             var id = roleId?.RootElement.GetProperty("data").GetProperty("role_id").GetString() ?? key;
+            var scope = await ReadScopeAsync(role, cancellationToken);
             identities.Add(new MachineIdentity(
                 key,
                 id,
-                string.Empty,
-                string.Empty,
-                true,
+                scope.Project,
+                scope.Environment,
+                scope.ReadOnly,
                 role?.GetProperty("token_ttl").GetInt32(),
                 role?.GetProperty("secret_id_num_uses").GetInt32()));
         }
 
         return identities;
+    }
+
+    private async Task<(string Project, string Environment, bool ReadOnly)> ReadScopeAsync(
+        System.Text.Json.JsonElement? role,
+        CancellationToken cancellationToken)
+    {
+        if (role?.TryGetProperty("token_policies", out var policies) != true)
+        {
+            return (string.Empty, string.Empty, true);
+        }
+
+        foreach (var name in policies.EnumerateArray().Select(value => value.GetString()).OfType<string>())
+        {
+            var document = await client.GetAsync(
+                $"v1/sys/policies/acl/{Uri.EscapeDataString(name)}",
+                cancellationToken);
+            if (document?.RootElement.TryGetProperty("data", out var data) != true
+                || !data.TryGetProperty("policy", out var body))
+            {
+                continue;
+            }
+
+            var match = ScopePattern().Match(body.GetString() ?? string.Empty);
+            if (match.Success)
+            {
+                return (
+                    match.Groups["project"].Value,
+                    match.Groups["environment"].Value,
+                    !match.Groups["capabilities"].Value.Contains("create"));
+            }
+        }
+
+        return (string.Empty, string.Empty, true);
     }
 
     public async Task<MachineIdentity> CreateAsync(MachineIdentity identity, CancellationToken cancellationToken)

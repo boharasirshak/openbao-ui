@@ -108,10 +108,16 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<MetadataResponse>(cancellationToken: cancellationToken)
             ?? throw new InvalidOperationException("OpenBao returned invalid metadata.");
-        return payload.Data?.Versions.Values.Select(version => new SecretVersion(
-            version.Version,
-            DateTimeOffset.TryParse(version.DeletionTime, out var deletedAt) ? deletedAt : null,
-            version.Destroyed)).ToList() ?? [];
+        // OpenBao keys the versions map by version number; the entries themselves
+        // carry no version field, so the key is the only place it exists.
+        return payload.Data?.Versions
+            .Where(entry => int.TryParse(entry.Key, out _))
+            .Select(entry => new SecretVersion(
+                int.Parse(entry.Key),
+                DateTimeOffset.TryParse(entry.Value.DeletionTime, out var deletedAt) ? deletedAt : null,
+                entry.Value.Destroyed))
+            .OrderBy(version => version.Version)
+            .ToList() ?? [];
     }
 
     public async Task RestoreAsync(
@@ -170,7 +176,6 @@ public sealed class OpenBaoSecretsEngine(HttpClient client, IOpenBaoTokenAccesso
     private sealed record MetadataPayload(
         [property: JsonPropertyName("versions")] IReadOnlyDictionary<string, MetadataVersion> Versions);
     private sealed record MetadataVersion(
-        [property: JsonPropertyName("version")] int Version,
         [property: JsonPropertyName("deletion_time")] string? DeletionTime,
         [property: JsonPropertyName("destroyed")] bool Destroyed);
     private sealed record ListResponse([property: JsonPropertyName("data")] ListPayload? Data);

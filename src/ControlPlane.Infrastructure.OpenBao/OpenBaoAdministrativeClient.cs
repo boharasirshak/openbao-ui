@@ -1,11 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ControlPlane.Application;
 using Microsoft.Extensions.Options;
 
 namespace ControlPlane.Infrastructure.OpenBao;
 
-public sealed class OpenBaoAdministrativeClient(HttpClient client, IOptions<OpenBaoOptions> options)
+public sealed class OpenBaoAdministrativeClient(
+    HttpClient client,
+    IOptions<OpenBaoOptions> options,
+    IOpenBaoTokenAccessor? tokenAccessor = null)
 {
     public async Task<JsonDocument?> GetAsync(string path, CancellationToken cancellationToken)
     {
@@ -59,13 +63,26 @@ public sealed class OpenBaoAdministrativeClient(HttpClient client, IOptions<Open
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path)
     {
-        if (string.IsNullOrWhiteSpace(options.Value.ControlToken))
+        var token = TryGetSessionToken() ?? options.Value.ControlToken;
+        if (string.IsNullOrWhiteSpace(token))
         {
-            throw new InvalidOperationException("OpenBao:ControlToken is required for administrative operations.");
+            throw new InvalidOperationException("An authorized OpenBao session or OpenBao:ControlToken is required.");
         }
 
         var request = new HttpRequestMessage(method, path);
-        request.Headers.Add("X-Vault-Token", options.Value.ControlToken);
+        request.Headers.Add("X-Vault-Token", token);
         return request;
+    }
+
+    private string? TryGetSessionToken()
+    {
+        try
+        {
+            return tokenAccessor?.GetRequiredToken();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 }

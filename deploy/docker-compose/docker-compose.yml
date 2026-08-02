@@ -1,18 +1,28 @@
 services:
   openbao:
     image: openbao/openbao:2.2.0
-    command: server -config=/openbao/config/openbao.hcl
+    command: server
     ports:
       - "8200:8200"
     cap_add: ["IPC_LOCK"]
     volumes:
       - ../openbao/config:/openbao/config:ro
-      - openbao-data:/openbao/data
+      - openbao-data:/openbao/file
+    healthcheck:
+      test: ["CMD-SHELL", "bao status -address=http://localhost:8200 >/dev/null 2>&1 || test $? -eq 2"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
   bootstrap:
     image: curlimages/curl:8.12.1
-    depends_on: [openbao]
+    user: "0"
+    depends_on:
+      openbao:
+        condition: service_healthy
     volumes:
       - ../openbao/bootstrap:/bootstrap:ro
+      - openbao-bootstrap-state:/bootstrap-state
     entrypoint: ["/bin/sh", "/bootstrap/userpass.sh"]
 volumes:
   openbao-data:
+  openbao-bootstrap-state:
