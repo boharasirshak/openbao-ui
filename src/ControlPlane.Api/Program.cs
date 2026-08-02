@@ -238,7 +238,13 @@ app.MapGet(
             var expiresAt = DateTimeOffset.FromUnixTimeSeconds(
                 long.Parse(context.User.FindFirstValue(OpenBaoExpirationClaim)!));
 
-            return Results.Ok(new SessionResponse(expiresAt));
+            // Return the policies the login response already sends, so a page refresh
+            // does not silently drop the caller's administrative access in the UI.
+            var policies = context.User.FindAll("openbao_policy")
+                .Select(claim => claim.Value)
+                .ToList();
+
+            return Results.Ok(new SessionResponse(expiresAt, policies));
         })
     .RequireAuthorization()
     .Produces<SessionResponse>();
