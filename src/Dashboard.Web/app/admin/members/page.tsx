@@ -26,6 +26,7 @@ import ShieldIcon from "@mui/icons-material/VerifiedUserOutlined";
 import { EmptyState, LoadingRow, PageHeader } from "@/components/AppShell";
 import FormDialog from "@/components/FormDialog";
 import { mono } from "@/lib/theme";
+import { keys } from "@/lib/queryKeys";
 import {
   assignMemberRoles,
   createMember,
@@ -33,7 +34,7 @@ import {
   disableMember,
   errorMessage,
   listMembers,
-  listRoles,
+  listAssignablePolicies,
   updateMember,
   type MemberResponse,
 } from "@/lib/client";
@@ -42,8 +43,8 @@ const ADMIN_POLICY = "wrapper-admin";
 
 export default function MembersPage() {
   const queryClient = useQueryClient();
-  const members = useQuery({ queryKey: ["members"], queryFn: listMembers });
-  const roles = useQuery({ queryKey: ["roles"], queryFn: listRoles });
+  const members = useQuery({ queryKey: keys.members, queryFn: listMembers });
+  const roles = useQuery({ queryKey: keys.assignablePolicies, queryFn: listAssignablePolicies });
 
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -56,8 +57,8 @@ export default function MembersPage() {
   const [editingRoles, setEditingRoles] = useState<MemberResponse | null>(null);
   const [rolesDraft, setRolesDraft] = useState<string[]>([]);
 
-  const roleOptions = [ADMIN_POLICY, ...(roles.data ?? []).map((role) => role.name)];
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["members"] });
+  const roleOptions = [ADMIN_POLICY, ...(roles.data ?? [])];
+  const refresh = () => queryClient.invalidateQueries({ queryKey: keys.members });
 
   async function act(action: () => Promise<void>) {
     setError("");
@@ -167,7 +168,7 @@ export default function MembersPage() {
                             disabled={member.disabled}
                             onClick={() => {
                               if (window.confirm(`Disable ${member.username}?`)) {
-                                act(() => disableMember(member.username));
+                                void act(() => disableMember(member.username));
                               }
                             }}
                           >
@@ -185,7 +186,7 @@ export default function MembersPage() {
                                 `Delete ${member.username}? Their OpenBao login and entity are removed.`,
                               )
                             ) {
-                              act(() => deleteMember(member.username));
+                              void act(() => deleteMember(member.username));
                             }
                           }}
                         >
@@ -300,7 +301,7 @@ function RolePicker({
       autoSelect
       options={options}
       value={value}
-      onChange={(_, next) => onChange(next as string[])}
+      onChange={(_, next) => onChange(next)}
       renderInput={(params) => (
         <TextField
           {...params}

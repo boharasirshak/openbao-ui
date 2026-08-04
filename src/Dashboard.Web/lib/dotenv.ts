@@ -38,8 +38,11 @@ export function parseDotEnv(text: string): Record<string, string> {
 /** Accepts either a .env file or a flat JSON object of string values. */
 export function parseSecretFile(text: string): Record<string, string> {
   const trimmed = text.trim();
-  if (trimmed.startsWith("{")) {
-    const parsed = JSON.parse(trimmed);
+  // A leading bracket is JSON too. Without this it fell through to the .env parser,
+  // which finds no assignments and returns an empty object — so a pasted array
+  // silently imported nothing instead of reporting the problem.
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const parsed: unknown = JSON.parse(trimmed);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       throw new Error("JSON must be a flat object of key/value pairs.");
     }

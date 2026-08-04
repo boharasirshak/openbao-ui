@@ -22,6 +22,7 @@ import ArrowIcon from "@mui/icons-material/ArrowForwardOutlined";
 import { EmptyState, LoadingRow, PageHeader, isAdmin, useSession } from "@/components/AppShell";
 import EnvironmentChip from "@/components/EnvironmentChip";
 import FormDialog from "@/components/FormDialog";
+import { keys } from "@/lib/queryKeys";
 import {
   createProject,
   deleteProject,
@@ -42,11 +43,11 @@ export default function ProjectsPage() {
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
 
-  const projects = useQuery({ queryKey: ["projects"], queryFn: listAdminProjects, retry: false });
+  const projects = useQuery({ queryKey: keys.projects, queryFn: listAdminProjects, retry: false });
 
   const removeProject = useMutation({
     mutationFn: deleteProject,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.projects }),
     onError: (deleteError) =>
       setError(errorMessage(deleteError, "The project could not be deleted.")),
   });
@@ -117,8 +118,8 @@ export default function ProjectsPage() {
 
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                   {project.environments.map((environment) => (
-                    <Link key={environment} href={secretsHref(project.id, environment)}>
-                      <EnvironmentChip environment={environment} clickable />
+                    <Link key={environment.id} href={secretsHref(project.id, environment.id)}>
+                      <EnvironmentChip environment={environment.id} clickable />
                     </Link>
                   ))}
                   {admin && (
@@ -161,7 +162,7 @@ export default function ProjectsPage() {
         }}
         onSubmit={async () => {
           await createProject(id.trim(), description.trim());
-          await queryClient.invalidateQueries({ queryKey: ["projects"] });
+          await queryClient.invalidateQueries({ queryKey: keys.projects });
         }}
       >
         <TextField

@@ -33,6 +33,7 @@ import EnvironmentChip from "@/components/EnvironmentChip";
 import FormDialog from "@/components/FormDialog";
 import { CopyButton } from "@/components/SecretValue";
 import { mono } from "@/lib/theme";
+import { keys } from "@/lib/queryKeys";
 import {
   createMachineIdentity,
   errorMessage,
@@ -46,8 +47,8 @@ const ENVIRONMENTS = ["development", "staging", "production"];
 
 export default function MachineIdentitiesPage() {
   const queryClient = useQueryClient();
-  const identities = useQuery({ queryKey: ["machine-identities"], queryFn: listMachineIdentities });
-  const projects = useQuery({ queryKey: ["projects"], queryFn: listAdminProjects });
+  const identities = useQuery({ queryKey: keys.machineIdentities, queryFn: listMachineIdentities });
+  const projects = useQuery({ queryKey: keys.projects, queryFn: listAdminProjects });
 
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -59,7 +60,7 @@ export default function MachineIdentitiesPage() {
   const [uses, setUses] = useState("1");
   const [issued, setIssued] = useState<{ role: string; secretId: string } | null>(null);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["machine-identities"] });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: keys.machineIdentities });
 
   async function issueSecretId(roleName: string) {
     setError("");

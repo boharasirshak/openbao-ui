@@ -9,7 +9,9 @@ export interface paths {
       responses: {
         /** @description OK */
         200: {
-          content: never;
+          content: {
+            "application/json": components["schemas"]["CsrfTokenResponse"];
+          };
         };
       };
     };
@@ -27,6 +29,14 @@ export interface paths {
           content: {
             "application/json": components["schemas"]["SessionResponse"];
           };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Unauthorized */
+        401: {
+          content: never;
         };
       };
     };
@@ -53,6 +63,91 @@ export interface paths {
       };
     };
   };
+  "/api/shares": {
+    post: {
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateShareRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CreateShareResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
+        };
+      };
+    };
+  };
+  "/api/shares/{token}/open": {
+    post: {
+      parameters: {
+        path: {
+          token: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ShareResponse"];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/activity": {
+    get: {
+      parameters: {
+        query?: {
+          days?: number | string;
+        };
+        path: {
+          project: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ActivityEntryResponse"][];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/permissions": {
+    post: {
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PermissionsRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["PermissionsResponse"];
+          };
+        };
+      };
+    };
+  };
   "/api/database/credentials/{role}": {
     get: {
       parameters: {
@@ -66,6 +161,10 @@ export interface paths {
           content: {
             "application/json": components["schemas"]["DatabaseCredentialResponse"];
           };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
         };
       };
     };
@@ -101,6 +200,10 @@ export interface paths {
             "application/json": components["schemas"]["ProjectResponse"];
           };
         };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
       };
     };
     delete: {
@@ -110,24 +213,95 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
           content: never;
         };
       };
     };
   };
-  "/api/admin/audit/recent": {
-    get: {
+  "/api/admin/projects/{project}/environments": {
+    post: {
       parameters: {
-        query?: {
-          limit?: number | string;
+        path: {
+          project: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateEnvironmentRequest"];
         };
       };
       responses: {
         /** @description OK */
         200: {
-          content: never;
+          content: {
+            "application/json": components["schemas"]["ProjectResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
+        };
+      };
+    };
+  };
+  "/api/admin/projects/{project}/environments/{environment}": {
+    delete: {
+      parameters: {
+        query?: {
+          purge?: boolean;
+        };
+        path: {
+          project: string;
+          environment: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ProjectResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
+        };
+      };
+    };
+    patch: {
+      parameters: {
+        path: {
+          project: string;
+          environment: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateEnvironmentRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ProjectResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
         };
       };
     };
@@ -150,8 +324,8 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
           content: never;
         };
       };
@@ -170,8 +344,8 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
           content: never;
         };
       };
@@ -183,8 +357,8 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
           content: never;
         };
       };
@@ -203,8 +377,12 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
           content: never;
         };
       };
@@ -218,48 +396,8 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
-          content: never;
-        };
-      };
-    };
-  };
-  "/api/admin/roles": {
-    get: {
-      responses: {
-        /** @description OK */
-        200: {
-          content: {
-            "application/json": components["schemas"]["RoleResponse"][];
-          };
-        };
-      };
-    };
-    post: {
-      requestBody: {
-        content: {
-          "application/json": components["schemas"]["CreateRoleRequest"];
-        };
-      };
-      responses: {
         /** @description No Content */
         204: {
-          content: never;
-        };
-      };
-    };
-  };
-  "/api/admin/roles/{roleName}": {
-    delete: {
-      parameters: {
-        path: {
-          roleName: string;
-        };
-      };
-      responses: {
-        /** @description OK */
-        200: {
           content: never;
         };
       };
@@ -289,6 +427,10 @@ export interface paths {
             "application/json": components["schemas"]["MachineIdentityResponse"];
           };
         };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
       };
     };
   };
@@ -302,7 +444,9 @@ export interface paths {
       responses: {
         /** @description OK */
         200: {
-          content: never;
+          content: {
+            "application/json": components["schemas"]["SecretIdResponse"];
+          };
         };
       };
     };
@@ -315,8 +459,134 @@ export interface paths {
         };
       };
       responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/environments/{environment}/secrets/metadata/{path}": {
+    get: {
+      parameters: {
+        path: {
+          project: string;
+          environment: string;
+          path: string;
+        };
+      };
+      responses: {
         /** @description OK */
         200: {
+          content: {
+            "application/json": components["schemas"]["SecretMetadataResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+    patch: {
+      parameters: {
+        path: {
+          project: string;
+          environment: string;
+          path: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["UpdateSecretMetadataRequest"];
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/environments/{environment}/secrets/destroy/{path}": {
+    post: {
+      parameters: {
+        path: {
+          project: string;
+          environment: string;
+          path: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DestroyVersionsRequest"];
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/environments/{environment}/secrets/purge/{path}": {
+    delete: {
+      parameters: {
+        path: {
+          project: string;
+          environment: string;
+          path: string;
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/environments/{environment}/secrets/folders/{path}": {
+    delete: {
+      parameters: {
+        query?: {
+          purge?: boolean;
+        };
+        path: {
+          project: string;
+          environment: string;
+          path: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["FolderOperationResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
           content: never;
         };
       };
@@ -335,8 +605,12 @@ export interface paths {
         /** @description OK */
         200: {
           content: {
-            "application/json": components["schemas"]["SecretEntry"][];
+            "application/json": components["schemas"]["SecretEntryResponse"][];
           };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
         };
       };
     };
@@ -357,6 +631,10 @@ export interface paths {
             "application/json": components["schemas"]["SecretVersionResponse"][];
           };
         };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
       };
     };
   };
@@ -375,8 +653,12 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
           content: never;
         };
       };
@@ -397,8 +679,12 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
           content: never;
         };
       };
@@ -419,6 +705,18 @@ export interface paths {
       responses: {
         /** @description OK */
         200: {
+          content: {
+            "application/json": {
+              [key: string]: string;
+            };
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
           content: never;
         };
       };
@@ -439,8 +737,16 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Conflict */
+        409: {
           content: never;
         };
       };
@@ -462,6 +768,14 @@ export interface paths {
             "application/json": components["schemas"]["SecretDocumentResponse"];
           };
         };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
       };
     };
     put: {
@@ -478,8 +792,16 @@ export interface paths {
         };
       };
       responses: {
-        /** @description OK */
-        200: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Conflict */
+        409: {
           content: never;
         };
       };
@@ -493,8 +815,420 @@ export interface paths {
         };
       };
       responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Conflict */
+        409: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/search": {
+    get: {
+      parameters: {
+        query?: {
+          q?: string;
+        };
+        path: {
+          project: string;
+        };
+      };
+      responses: {
         /** @description OK */
         200: {
+          content: {
+            "application/json": components["schemas"]["SecretSearchResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/compare": {
+    get: {
+      parameters: {
+        query: {
+          path: string;
+          environments?: string;
+        };
+        path: {
+          project: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["CompareResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/changes": {
+    get: {
+      parameters: {
+        path: {
+          project: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ChangeRequestResponse"][];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+      };
+    };
+    post: {
+      parameters: {
+        path: {
+          project: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateChangeRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ChangeRequestResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/changes/{id}/values": {
+    get: {
+      parameters: {
+        path: {
+          project: string;
+          id: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["SecretDocumentResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/changes/{id}/approve": {
+    post: {
+      parameters: {
+        path: {
+          project: string;
+          id: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ReviewChangeRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ChangeRequestResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Forbidden */
+        403: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/changes/{id}/reject": {
+    post: {
+      parameters: {
+        path: {
+          project: string;
+          id: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ReviewChangeRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ChangeRequestResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Forbidden */
+        403: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/changes/{id}": {
+    delete: {
+      parameters: {
+        path: {
+          project: string;
+          id: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ChangeRequestResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Forbidden */
+        403: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/admin/teams": {
+    get: {
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["TeamResponse"][];
+          };
+        };
+      };
+    };
+    post: {
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateTeamRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["TeamResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
+        };
+      };
+    };
+  };
+  "/api/admin/teams/{name}/roles": {
+    put: {
+      parameters: {
+        path: {
+          name: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SetTeamRolesRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["TeamResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
+        };
+      };
+    };
+  };
+  "/api/admin/teams/{name}/members": {
+    put: {
+      parameters: {
+        path: {
+          name: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SetTeamMembersRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["TeamResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
+        };
+      };
+    };
+  };
+  "/api/admin/teams/{name}": {
+    delete: {
+      parameters: {
+        path: {
+          name: string;
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/admin/assignable-policies": {
+    get: {
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AssignablePoliciesResponse"];
+          };
+        };
+      };
+    };
+  };
+  "/api/admin/projects/{project}/roles": {
+    get: {
+      parameters: {
+        path: {
+          project: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AccessRoleResponse"][];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/admin/projects/{project}/roles/{name}": {
+    put: {
+      parameters: {
+        path: {
+          project: string;
+          name: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SaveAccessRoleRequest"];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AccessRoleResponse"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: {
+            "application/problem+json": components["schemas"]["ProblemDetails"];
+          };
+        };
+      };
+    };
+    delete: {
+      parameters: {
+        path: {
+          project: string;
+          name: string;
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
           content: never;
         };
       };
@@ -506,8 +1240,77 @@ export type webhooks = Record<string, never>;
 
 export interface components {
   schemas: {
+    AccessRoleResponse: {
+      name: string;
+      project: string;
+      policyName: string;
+      environments: string[];
+      permissions: components["schemas"]["RolePermissionsPayload"];
+      description: null | string;
+    };
+    ActivityEntryResponse: {
+      /** Format: date-time */
+      at: string;
+      actor: string;
+      action: string;
+      project: string;
+      environment: null | string;
+      path: null | string;
+      keysAffected: string[];
+      /** Format: int32 */
+      version: null | number | string;
+    };
+    AssignablePoliciesResponse: {
+      policies: string[];
+    };
     AssignRolesRequest: {
       roles: string[];
+    };
+    ChangeRequestResponse: {
+      id: string;
+      project: string;
+      environment: string;
+      path: string;
+      keys: string[];
+      requestedBy: string;
+      /** Format: date-time */
+      requestedAt: string;
+      status: string;
+      reason: null | string;
+      /** Format: int32 */
+      expectedVersion: null | number | string;
+      reviews: components["schemas"]["ChangeReviewPayload"][];
+      canReview: boolean;
+      isDeletion: boolean;
+    };
+    ChangeReviewPayload: {
+      reviewer: string;
+      approved: boolean;
+      /** Format: date-time */
+      at: string;
+      note: null | string;
+    };
+    CompareResponse: {
+      path: string;
+      environments: components["schemas"]["EnvironmentSnapshot"][];
+    };
+    CreateChangeRequest: {
+      environment: string;
+      path: string;
+      values: {
+        [key: string]: string;
+      };
+      reason: null | string;
+      /** Format: int32 */
+      expectedVersion: null | number | string;
+      description?: null | string;
+      /** @default false */
+      delete?: boolean;
+    };
+    CreateEnvironmentRequest: {
+      id: string;
+      displayName: string;
+      protected: boolean;
     };
     CreateMachineIdentityRequest: {
       name: string;
@@ -527,11 +1330,24 @@ export interface components {
     CreateProjectRequest: {
       description: string;
     };
-    CreateRoleRequest: {
+    CreateShareRequest: {
+      values: {
+        [key: string]: string;
+      };
+      /** Format: int32 */
+      ttlSeconds: number | string;
+    };
+    CreateShareResponse: {
+      token: string;
+      /** Format: date-time */
+      expiresAt: string;
+    };
+    CreateTeamRequest: {
       name: string;
-      project: string;
-      environment: string;
-      readOnly: boolean;
+      roles: string[];
+    };
+    CsrfTokenResponse: {
+      token: string;
     };
     DatabaseCredentialResponse: {
       username: string;
@@ -539,6 +1355,30 @@ export interface components {
       leaseId: string;
       /** Format: date-time */
       expiresAt: string;
+    };
+    DestroyVersionsRequest: {
+      versions: (number | string)[];
+    };
+    EnvironmentResponse: {
+      id: string;
+      displayName: string;
+      protected: boolean;
+      /** Format: int32 */
+      position: number | string;
+    };
+    EnvironmentSnapshot: {
+      environment: string;
+      accessible: boolean;
+      exists: boolean;
+      /** Format: int32 */
+      version: number | string;
+      values: {
+        [key: string]: string;
+      };
+    };
+    FolderOperationResponse: {
+      /** Format: int32 */
+      secretsAffected: number | string;
     };
     ImportSecretsRequest: {
       values: {
@@ -569,16 +1409,57 @@ export interface components {
       disabled: boolean;
       policies: string[];
     };
+    PermissionQuery: {
+      project: string;
+      environment: null | string;
+    };
+    PermissionResult: {
+      project: string;
+      environment: null | string;
+      canRead: boolean;
+      canWrite: boolean;
+      canDelete: boolean;
+    };
+    PermissionsRequest: {
+      resources: components["schemas"]["PermissionQuery"][];
+    };
+    PermissionsResponse: {
+      results: components["schemas"]["PermissionResult"][];
+    };
+    ProblemDetails: {
+      type?: null | string;
+      title?: null | string;
+      /** Format: int32 */
+      status?: null | number | string;
+      detail?: null | string;
+      instance?: null | string;
+    };
     ProjectResponse: {
       id: string;
       description: string;
-      environments: string[];
+      environments: components["schemas"]["EnvironmentResponse"][];
     };
-    RoleResponse: {
-      name: string;
-      project: string;
-      environment: string;
-      readOnly: boolean;
+    ReviewChangeRequest: {
+      note: null | string;
+    };
+    RolePermissionsPayload: {
+      describe: boolean;
+      readValues: boolean;
+      writeSecrets: boolean;
+      deleteSecrets: boolean;
+      manageDetails: boolean;
+      rollBack: boolean;
+      destroy: boolean;
+    };
+    SaveAccessRoleRequest: {
+      environments: string[];
+      permissions: components["schemas"]["RolePermissionsPayload"];
+      description: null | string;
+    };
+    SecretAnnotationsPayload: {
+      description: null | string;
+      tags: null | string[];
+      comment: null | string;
     };
     SecretDocumentRequest: {
       values: {
@@ -596,9 +1477,35 @@ export interface components {
       version: number | string;
       description?: null | string;
     };
-    SecretEntry: {
+    SecretEntryResponse: {
       name: string;
       isFolder: boolean;
+    };
+    SecretIdResponse: {
+      secretId: string;
+    };
+    SecretMetadataResponse: {
+      annotations: components["schemas"]["SecretAnnotationsPayload"];
+      retention: components["schemas"]["SecretRetentionPayload"];
+      /** Format: int32 */
+      currentVersion: number | string;
+      /** Format: date-time */
+      updatedAt: null | string;
+      versions: components["schemas"]["SecretVersionResponse"][];
+    };
+    SecretRetentionPayload: {
+      /** Format: int32 */
+      maxVersions: null | number | string;
+      /** Format: int32 */
+      deleteVersionAfterSeconds: null | number | string;
+    };
+    SecretSearchHit: {
+      environment: string;
+      path: string;
+    };
+    SecretSearchResponse: {
+      hits: components["schemas"]["SecretSearchHit"][];
+      truncated: boolean;
     };
     SecretVersionRequest: {
       /** Format: int32 */
@@ -615,10 +1522,38 @@ export interface components {
       /** Format: date-time */
       expiresAt: string;
       policies?: null | string[];
+      username?: null | string;
+    };
+    SetTeamMembersRequest: {
+      memberEntityIds: string[];
+    };
+    SetTeamRolesRequest: {
+      roles: string[];
+    };
+    ShareResponse: {
+      values: {
+        [key: string]: string;
+      };
+    };
+    TeamResponse: {
+      name: string;
+      id: string;
+      roles: string[];
+      memberEntityIds: string[];
+    };
+    UpdateEnvironmentRequest: {
+      displayName: null | string;
+      protected: null | boolean;
+      /** Format: int32 */
+      position: null | number | string;
     };
     UpdateMemberRequest: {
       password: string;
       policies: string[];
+    };
+    UpdateSecretMetadataRequest: {
+      annotations: null | components["schemas"]["SecretAnnotationsPayload"];
+      retention: null | components["schemas"]["SecretRetentionPayload"];
     };
   };
   responses: never;
