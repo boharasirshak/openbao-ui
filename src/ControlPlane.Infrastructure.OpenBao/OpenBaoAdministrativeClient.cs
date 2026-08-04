@@ -15,7 +15,11 @@ public sealed class OpenBaoAdministrativeClient(
     {
         using var request = CreateRequest(HttpMethod.Get, path);
         using var response = await client.SendAsync(request, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound)
+
+        // A missing secret answers 404, but reading under a mount that does not exist
+        // yet answers 400. Both mean "nothing here", and on a fresh install the second
+        // happens before the control plane's own mount has been created.
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
         {
             return null;
         }

@@ -30,7 +30,7 @@ export default function FormDialog({
   title: string;
   submitLabel?: string;
   onClose: () => void;
-  onSubmit: () => Promise<void>;
+  onSubmit: () => void | Promise<void>;
   disabled?: boolean;
   children: ReactNode;
 }) {

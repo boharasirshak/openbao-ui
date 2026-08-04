@@ -22,15 +22,16 @@ import {
 } from "@mui/material";
 import FolderIcon from "@mui/icons-material/FolderOutlined";
 import PeopleIcon from "@mui/icons-material/PeopleAltOutlined";
-import ShieldIcon from "@mui/icons-material/VerifiedUserOutlined";
+import GroupsIcon from "@mui/icons-material/GroupsOutlined";
 import SmartToyIcon from "@mui/icons-material/SmartToyOutlined";
 import StorageIcon from "@mui/icons-material/StorageOutlined";
-import HistoryIcon from "@mui/icons-material/HistoryOutlined";
 import LogoutIcon from "@mui/icons-material/LogoutOutlined";
 import MenuIcon from "@mui/icons-material/Menu";
 import LockIcon from "@mui/icons-material/LockOutlined";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { getSession, logout, type SessionResponse } from "@/lib/client";
+import ThemeModeToggle from "@/components/ui/ThemeModeToggle";
+import { keys } from "@/lib/queryKeys";
 
 const DRAWER_WIDTH = 248;
 
@@ -66,21 +67,15 @@ const NAV: { heading: string; items: NavItem[] }[] = [
         adminOnly: true,
       },
       {
-        href: "/admin/roles",
-        label: "Roles",
-        icon: <ShieldIcon fontSize="small" />,
+        href: "/admin/teams",
+        label: "Teams",
+        icon: <GroupsIcon fontSize="small" />,
         adminOnly: true,
       },
       {
         href: "/admin/machine-identities",
         label: "Machine identities",
         icon: <SmartToyIcon fontSize="small" />,
-        adminOnly: true,
-      },
-      {
-        href: "/admin/audit",
-        label: "Audit log",
-        icon: <HistoryIcon fontSize="small" />,
         adminOnly: true,
       },
     ],
@@ -183,6 +178,7 @@ function SidebarContent({
             Session {expiresIn(session)}
           </Typography>
         </Box>
+        <ThemeModeToggle />
         <Tooltip title="Sign out">
           <IconButton size="small" onClick={onSignOut}>
             <LogoutIcon fontSize="small" />
@@ -198,9 +194,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const session = useQuery({ queryKey: ["session"], queryFn: getSession, staleTime: 30_000 });
+  const session = useQuery({ queryKey: keys.session, queryFn: getSession, staleTime: 30_000 });
 
-  const signedOut = pathname !== "/login" && !session.isLoading && !session.data;
+  const isPublic = pathname === "/login" || pathname.startsWith("/share/");
+  const signedOut = !isPublic && !session.isLoading && !session.data;
   useEffect(() => {
     // Redirecting during render warns and can loop, so do it after paint.
     if (signedOut) router.replace("/login");
@@ -215,7 +212,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
   }
 
-  if (pathname === "/login") return <>{children}</>;
+  // Pages that must render without a session. A share link is opened by whoever
+  // received it, who has no account here.
+  if (pathname === "/login" || pathname.startsWith("/share/")) return <>{children}</>;
 
   if (session.isLoading) {
     return (

@@ -1,0 +1,4 @@
+# Product names this codebase must never mention. Inspiration is fine; looking like
+# a clone is not. One term per line, matched case-insensitively as a whole word.
+# Lines starting with # are ignored.
+infisical

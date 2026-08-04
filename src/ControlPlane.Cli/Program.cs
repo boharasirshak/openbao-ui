@@ -224,7 +224,7 @@ internal static class SecretsCli
         var project = ProjectId.Parse(RequiredOption(args, "--project") ?? throw new ArgumentException("Project is required."));
         var environment = EnvironmentId.Parse(RequiredOption(args, "--env") ?? throw new ArgumentException("Environment is required."));
         var path = ControlPlane.Domain.SecretPath.Parse(RequiredOption(args, "--path") ?? "root");
-        return $"v1/{project}/data/{environment}/{path}";
+        return $"v1/{new SecretLocation(project, environment, path).Data}";
     }
 
     private static Dictionary<string, string> ParseEnv(IEnumerable<string> lines) =>
@@ -237,10 +237,7 @@ internal static class SecretsCli
                 : throw new ArgumentException("Invalid .env line."))
             .ToDictionary(pair => pair.Key, pair => pair.Value);
 
-    private static bool IsValidSecretKey(string key) =>
-        !string.IsNullOrWhiteSpace(key)
-        && (char.IsLetter(key[0]) || key[0] == '_')
-        && key.Skip(1).All(character => char.IsLetterOrDigit(character) || character == '_');
+    private static bool IsValidSecretKey(string key) => Identifier.IsValidSecretKey(key);
 
     private static int? GetExpectedVersion(string[] args) =>
         int.TryParse(RequiredOption(args, "--version"), out var version) ? version : null;

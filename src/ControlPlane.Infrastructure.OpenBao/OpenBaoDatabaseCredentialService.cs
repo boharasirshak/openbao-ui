@@ -13,9 +13,10 @@ public sealed class OpenBaoDatabaseCredentialService(
         string role,
         CancellationToken cancellationToken)
     {
+        // Shares the one segment rule, which also rejects "." and ".." — the previous
+        // inline copy allowed both.
         if (string.IsNullOrWhiteSpace(role)
-            || role.Split('/').Any(segment => string.IsNullOrWhiteSpace(segment)
-                || !segment.All(character => char.IsLetterOrDigit(character) || character is '-' or '_')))
+            || role.Split('/').Any(segment => !Identifier.IsValidSegment(segment)))
         {
             throw new ArgumentException("Database role is invalid.", nameof(role));
         }
