@@ -75,7 +75,8 @@ public sealed class ApiSecurityTests
                 "fake-token",
                 "fake-accessor",
                 DateTimeOffset.UtcNow.AddMinutes(5),
-                ["default"]));
+                ["default"],
+                username));
 
         public Task RevokeAsync(string token, CancellationToken cancellationToken) => Task.CompletedTask;
     }

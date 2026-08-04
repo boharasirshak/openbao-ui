@@ -5,40 +5,15 @@ using System.Text.Json;
 using ControlPlane.Application;
 using ControlPlane.Domain;
 using ControlPlane.Infrastructure.OpenBao;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
+using ControlPlane.IntegrationTests.Fixtures;
 using Microsoft.Extensions.Options;
 
 namespace ControlPlane.IntegrationTests;
 
-public sealed class UserpassLoginTests : IAsyncLifetime
+[Collection(OpenBaoCollection.Name)]
+public sealed class UserpassLoginTests(OpenBaoFixture fixture)
 {
-    private readonly IContainer _openBao = new ContainerBuilder("openbao/openbao:2.2.0")
-        .WithPortBinding(8200, true)
-        .WithCommand("server", "-dev", "-dev-root-token-id=test-root", "-dev-listen-address=0.0.0.0:8200")
-        .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(request => request.ForPort(8200).ForPath("/v1/sys/health")))
-        .Build();
-    private Uri _address = null!;
-
-    public async Task InitializeAsync()
-    {
-        await _openBao.StartAsync();
-        _address = new Uri($"http://{_openBao.Hostname}:{_openBao.GetMappedPublicPort(8200)}/");
-        using var admin = new HttpClient { BaseAddress = _address };
-        admin.DefaultRequestHeaders.Add("X-Vault-Token", "test-root");
-        await admin.PostAsJsonAsync("v1/sys/auth/userpass", new { type = "userpass" });
-        await admin.PostAsJsonAsync("v1/sys/mounts/thorneai", new { type = "kv", options = new { version = "2" } });
-        await admin.PutAsJsonAsync(
-            "v1/sys/policies/acl/dev-writer",
-            new
-            {
-                policy = "path \"thorneai/data/development/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\"] }\npath \"thorneai/metadata/development/*\" { capabilities = [\"read\", \"list\", \"update\"] }",
-            });
-        var create = await admin.PostAsJsonAsync(
-            "v1/auth/userpass/users/alice",
-            new { password = "correct-password", policies = new[] { "dev-writer" }, token_ttl = "10m" });
-        create.EnsureSuccessStatusCode();
-    }
+    private Uri _address => fixture.Address;
 
     [Fact]
     public async Task Login_returns_a_short_lived_openbao_session()
@@ -210,17 +185,17 @@ public sealed class UserpassLoginTests : IAsyncLifetime
     [Fact]
     public async Task Disabled_user_cannot_log_in()
     {
-        using var admin = new HttpClient { BaseAddress = _address };
-        admin.DefaultRequestHeaders.Add("X-Vault-Token", "test-root");
-        var disable = await admin.DeleteAsync("v1/auth/userpass/users/alice");
+        // Its own user: deleting the shared one would break every sibling test now
+        // that the container is shared.
+        var username = await fixture.NewUserAsync("disabled-password", OpenBaoFixture.SharedPolicy);
+        using var admin = fixture.CreateRootClient();
+        var disable = await admin.DeleteAsync($"v1/auth/userpass/users/{username}");
         disable.EnsureSuccessStatusCode();
 
-        var service = new OpenBaoSessionService(
-            new HttpClient { BaseAddress = _address },
-            Options.Create(new OpenBaoOptions { Address = _address }));
+        var service = new OpenBaoSessionService(fixture.CreateClient(), fixture.AnonymousOptions());
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.LoginAsync(
-            "alice",
-            "correct-password",
+            username,
+            "disabled-password",
             CancellationToken.None));
     }
 
@@ -234,19 +209,14 @@ public sealed class UserpassLoginTests : IAsyncLifetime
             ControlToken = "test-root",
         });
         var service = new OpenBaoProjectService(new OpenBaoAdministrativeClient(client, options), options);
+        var name = ProjectId.Parse(OpenBaoFixture.NewName("job-engine"));
 
-        var first = await service.CreateAsync(
-            ProjectId.Parse("job-engine"),
-            "Job engine secrets",
-            CancellationToken.None);
-        var second = await service.CreateAsync(
-            ProjectId.Parse("job-engine"),
-            "Job engine secrets",
-            CancellationToken.None);
+        var first = await service.CreateAsync(name, "Job engine secrets", CancellationToken.None);
+        var second = await service.CreateAsync(name, "Job engine secrets", CancellationToken.None);
         var projects = await service.ListAsync(CancellationToken.None);
 
         Assert.Equal(first.Id, second.Id);
-        Assert.Contains(projects, project => project.Id == ProjectId.Parse("job-engine"));
+        Assert.Contains(projects, project => project.Id == name);
         Assert.Equal(3, first.Environments.Count);
     }
 
@@ -261,18 +231,20 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         });
         var admin = new OpenBaoAdministrativeClient(client, options);
         var projectService = new OpenBaoProjectService(admin, options);
-        await projectService.CreateAsync(ProjectId.Parse("scoped-project"), "Scoped", CancellationToken.None);
+        var scopedProject = ProjectId.Parse(OpenBaoFixture.NewName("scoped"));
+        await projectService.CreateAsync(scopedProject, "Scoped", CancellationToken.None);
+        var scopedUser = OpenBaoFixture.NewName("scoped-admin");
         await admin.PostAsync(
-            "v1/auth/userpass/users/scoped-admin",
-            new { password = "scoped-password", policies = new[] { "scoped-project-admin" } },
+            $"v1/auth/userpass/users/{scopedUser}",
+            new { password = "scoped-password", policies = new[] { $"{scopedProject}-admin" } },
             CancellationToken.None);
 
         var session = await new OpenBaoSessionService(client, options)
-            .LoginAsync("scoped-admin", "scoped-password", CancellationToken.None);
+            .LoginAsync(scopedUser, "scoped-password", CancellationToken.None);
         var engine = new OpenBaoSecretsEngine(client, new FixedTokenAccessor(session.Token));
 
         await engine.WriteAsync(
-            ProjectId.Parse("scoped-project"),
+            scopedProject,
             EnvironmentId.Parse("development"),
             SecretPath.Parse("backend"),
             new SecretDocument(new Dictionary<string, string> { ["KEY"] = "scoped" }, 0),
@@ -300,8 +272,16 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         var admin = new OpenBaoAdministrativeClient(client, options);
         var policyService = new OpenBaoPolicyService(admin);
         var machines = new OpenBaoMachineIdentityService(admin, policyService);
+        var machineName = OpenBaoFixture.NewName("runner");
         var identity = await machines.CreateAsync(
-            new MachineIdentity("coolify-thorneai-prod", "coolify-thorneai-prod", "thorneai", "production", true, 60, 1),
+            new MachineIdentity(
+                machineName,
+                machineName,
+                OpenBaoFixture.SharedProject,
+                "production",
+                true,
+                60,
+                1),
             CancellationToken.None);
         var secretId = await machines.GenerateSecretIdAsync(identity.Name, CancellationToken.None);
         using var loginResponse = await client.PostAsJsonAsync(
@@ -332,23 +312,24 @@ public sealed class UserpassLoginTests : IAsyncLifetime
         });
         var identities = new OpenBaoIdentityService(new OpenBaoAdministrativeClient(client, options));
 
-        await identities.CreateAsync("bob", "bob-password", ["default"], CancellationToken.None);
+        var username = OpenBaoFixture.NewName("member");
+        await identities.CreateAsync(username, "member-password", ["default"], CancellationToken.None);
         var members = await identities.ListAsync(CancellationToken.None);
-        var bob = Assert.Single(members, member => member.Username == "bob");
-        Assert.NotEmpty(bob.EntityId);
+        var member = Assert.Single(members, candidate => candidate.Username == username);
+        Assert.NotEmpty(member.EntityId);
 
-        var bobSession = await new OpenBaoSessionService(client, options)
-            .LoginAsync("bob", "bob-password", CancellationToken.None);
-        await identities.DisableAsync("bob", CancellationToken.None);
+        var memberSession = await new OpenBaoSessionService(client, options)
+            .LoginAsync(username, "member-password", CancellationToken.None);
+        await identities.DisableAsync(username, CancellationToken.None);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => new OpenBaoSessionService(
                 client,
                 options)
-            .LoginAsync("bob", "bob-password", CancellationToken.None));
+            .LoginAsync(username, "member-password", CancellationToken.None));
         await Assert.ThrowsAsync<HttpRequestException>(() => new OpenBaoSecretsEngine(
                 client,
-                new FixedTokenAccessor(bobSession.Token))
+                new FixedTokenAccessor(memberSession.Token))
             .ReadAsync(
-                ProjectId.Parse("thorneai"),
+                ProjectId.Parse(OpenBaoFixture.SharedProject),
                 EnvironmentId.Parse("development"),
                 SecretPath.Parse("backend"),
                 CancellationToken.None));
@@ -363,24 +344,27 @@ public sealed class UserpassLoginTests : IAsyncLifetime
             Address = _address,
             ControlToken = "test-root",
         }));
+        var cliProject = OpenBaoFixture.NewName("cli-project");
+        var cliPolicy = OpenBaoFixture.NewName("cli-reader");
+        var cliUser = OpenBaoFixture.NewName("cli-user");
         await admin.PostAsync(
-            "v1/sys/mounts/cli-project",
+            $"v1/sys/mounts/{cliProject}",
             new { type = "kv", options = new { version = "2" } },
             CancellationToken.None);
         await admin.PutAsync(
-            "v1/sys/policies/acl/cli-reader",
-            new { policy = "path \"cli-project/data/development/*\" { capabilities = [\"create\", \"read\", \"update\", \"delete\"] }" },
+            $"v1/sys/policies/acl/{cliPolicy}",
+            new { policy = $"path \"{cliProject}/data/development/*\" {{ capabilities = [\"create\", \"read\", \"update\", \"delete\"] }}" },
             CancellationToken.None);
         await admin.PostAsync(
-            "v1/auth/userpass/users/cli-user",
-            new { password = "cli-password", policies = new[] { "cli-reader" } },
+            $"v1/auth/userpass/users/{cliUser}",
+            new { password = "cli-password", policies = new[] { cliPolicy } },
             CancellationToken.None);
         var cliSession = await new OpenBaoSessionService(
                 client,
                 Options.Create(new OpenBaoOptions { Address = _address }))
-            .LoginAsync("cli-user", "cli-password", CancellationToken.None);
+            .LoginAsync(cliUser, "cli-password", CancellationToken.None);
         await new OpenBaoSecretsEngine(client, new FixedTokenAccessor(cliSession.Token)).WriteAsync(
-            ProjectId.Parse("cli-project"),
+            ProjectId.Parse(cliProject),
             EnvironmentId.Parse("development"),
             SecretPath.Parse("backend"),
             new SecretDocument(new Dictionary<string, string> { ["CLI_SECRET"] = "secret-value" }, 0),
@@ -394,10 +378,10 @@ public sealed class UserpassLoginTests : IAsyncLifetime
                 "cli-password\n",
                 "login",
                 "--username",
-                "cli-user",
+                cliUser,
                 "--password-stdin");
             Assert.Equal(0, login.ExitCode);
-            var export = await RunCliAsync(tokenFile, "export", "--project", "cli-project", "--env", "development", "--path", "backend");
+            var export = await RunCliAsync(tokenFile, "export", "--project", cliProject, "--env", "development", "--path", "backend");
             Assert.Equal(0, export.ExitCode);
             Assert.Contains("CLI_SECRET=secret-value", export.StandardOutput);
             Assert.DoesNotContain("secret-value", export.StandardError);
@@ -405,7 +389,7 @@ public sealed class UserpassLoginTests : IAsyncLifetime
                 tokenFile,
                 "run",
                 "--project",
-                "cli-project",
+                cliProject,
                 "--env",
                 "development",
                 "--path",
@@ -465,8 +449,6 @@ public sealed class UserpassLoginTests : IAsyncLifetime
             await process.StandardOutput.ReadToEndAsync(),
             await process.StandardError.ReadToEndAsync());
     }
-
-    public Task DisposeAsync() => _openBao.DisposeAsync().AsTask();
 
     private sealed class FixedTokenAccessor(string token) : IOpenBaoTokenAccessor
     {

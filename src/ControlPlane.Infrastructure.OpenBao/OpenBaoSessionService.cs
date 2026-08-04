@@ -1,8 +1,8 @@
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 using ControlPlane.Application;
 using ControlPlane.Domain;
 using Microsoft.Extensions.Options;
-using VaultSharp;
-using VaultSharp.V1.AuthMethods.UserPass;
 
 namespace ControlPlane.Infrastructure.OpenBao;
 
@@ -10,25 +10,31 @@ public sealed class OpenBaoSessionService(HttpClient client, IOptions<OpenBaoOpt
 {
     public async Task<OpenBaoSession> LoginAsync(string username, string password, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var authMethod = new UserPassAuthMethodInfo(username, password);
-        var vaultClient = new VaultClient(new VaultClientSettings(options.Value.Address.ToString(), authMethod));
-        try
+        // Userpass login is a single unauthenticated POST. Doing it here rather than
+        // through an SDK keeps it on the same resilience-handled HttpClient as every
+        // other call, and the CLI already performs the identical request.
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"v1/auth/userpass/login/{Uri.EscapeDataString(username)}")
         {
-            await vaultClient.V1.Auth.Token.LookupSelfAsync();
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+            Content = JsonContent.Create(new { password }),
+        };
+
+        using var response = await client.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
         {
-            throw new UnauthorizedAccessException("Invalid username or password.", exception);
+            throw new UnauthorizedAccessException("Invalid username or password.");
         }
 
-        var auth = authMethod.ReturnedLoginAuthInfo
-            ?? throw new InvalidOperationException("OpenBao did not return a token.");
+        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>(cancellationToken: cancellationToken);
+        var auth = payload?.Auth ?? throw new InvalidOperationException("OpenBao did not return a token.");
+
         return new OpenBaoSession(
             auth.ClientToken,
-            auth.ClientTokenAccessor,
+            auth.Accessor,
             DateTimeOffset.UtcNow.AddSeconds(auth.LeaseDurationSeconds) - options.Value.SessionSafetyMargin,
-            auth.Policies);
+            auth.Policies ?? [],
+            username);
     }
 
     public async Task RevokeAsync(string token, CancellationToken cancellationToken)
@@ -38,4 +44,12 @@ public sealed class OpenBaoSessionService(HttpClient client, IOptions<OpenBaoOpt
         using var response = await client.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
+
+    private sealed record LoginResponse([property: JsonPropertyName("auth")] LoginAuth? Auth);
+
+    private sealed record LoginAuth(
+        [property: JsonPropertyName("client_token")] string ClientToken,
+        [property: JsonPropertyName("accessor")] string Accessor,
+        [property: JsonPropertyName("lease_duration")] int LeaseDurationSeconds,
+        [property: JsonPropertyName("policies")] IReadOnlyList<string>? Policies);
 }

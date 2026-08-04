@@ -81,30 +81,83 @@ public sealed class DomainAndSecretsEngineTests
     }
 
     [Fact]
-    public async Task Audit_projection_never_returns_secret_payloads()
+    public async Task Write_merges_custom_metadata_rather_than_replacing_it()
     {
-        var path = Path.GetTempFileName();
-        try
-        {
-            await File.WriteAllTextAsync(
-                path,
-                "{\"time\":\"2026-01-01T00:00:00Z\",\"type\":\"request\",\"auth\":{\"display_name\":\"alice\"},\"request\":{\"operation\":\"read\",\"path\":\"thorneai/data/development/backend\",\"data\":{\"API_KEY\":\"secret-value\"}}}");
-            var service = new OpenBaoAuditService(Options.Create(new OpenBaoOptions
-            {
-                Address = new Uri("http://openbao/"),
-                AuditLogPath = path,
-            }));
+        // A POST to the metadata path replaces the whole custom_metadata map, so
+        // saving a description used to wipe every tag and comment on the secret.
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var engine = CreateEngine(handler);
 
-            var events = await service.RecentAsync(10, CancellationToken.None);
+        await engine.WriteAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("development"),
+            SecretPath.Parse("backend"),
+            new SecretDocument(new Dictionary<string, string> { ["KEY"] = "value" }, 0, "a description"),
+            expectedVersion: null,
+            cancellationToken: CancellationToken.None);
 
-            var auditEvent = Assert.Single(events);
-            Assert.Equal("thorneai/data/development/backend", auditEvent.Path);
-            Assert.DoesNotContain("secret-value", auditEvent.ToString());
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        var metadataRequest = Assert.Single(
+            handler.Requests,
+            request => request.RequestUri!.AbsolutePath.Contains("/metadata/"));
+        Assert.Equal(HttpMethod.Patch, metadataRequest.Method);
+        Assert.Equal(
+            "application/merge-patch+json",
+            metadataRequest.Content!.Headers.ContentType!.MediaType);
+    }
+
+    [Fact]
+    public async Task Restore_leaves_custom_metadata_untouched()
+    {
+        // custom_metadata belongs to the secret, not to a version, so a rollback
+        // restores values only. Rewriting it from the historical read dropped
+        // every annotation other than the description.
+        var handler = new RecordingHandler(request =>
+            request.Method == HttpMethod.Get
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """
+                        {"data":{"data":{"KEY":"old"},"metadata":{"version":1,"custom_metadata":{"description":"d","tags":"a,b"}}}}
+                        """),
+                }
+                : new HttpResponseMessage(HttpStatusCode.OK));
+        var engine = CreateEngine(handler);
+
+        await engine.RestoreAsync(
+            ProjectId.Parse("thorneai"),
+            EnvironmentId.Parse("development"),
+            SecretPath.Parse("backend"),
+            version: 1,
+            cancellationToken: CancellationToken.None);
+
+        Assert.DoesNotContain(
+            handler.Requests,
+            request => request.RequestUri!.AbsolutePath.Contains("/metadata/"));
+    }
+
+    [Fact]
+    public void Activity_entries_carry_key_names_but_never_values()
+    {
+        // The feed is readable by anyone who can read the project, so a value must
+        // never reach it. Only key names are recorded.
+        var entry = new ActivityEntry(
+            DateTimeOffset.UtcNow,
+            "alice",
+            ActivityAction.SecretSaved,
+            "thorneai",
+            "production",
+            "backend",
+            ["API_KEY"],
+            3);
+
+        Assert.Equal(["API_KEY"], entry.KeysAffected);
+
+        // Structural guarantee rather than a string check: the record has no field a
+        // secret value could be put into, so it cannot leak one by accident later.
+        Assert.DoesNotContain(
+            typeof(ActivityEntry).GetProperties(),
+            property => property.Name.Contains("Value", StringComparison.OrdinalIgnoreCase)
+                || property.Name.Contains("Secret", StringComparison.OrdinalIgnoreCase));
     }
 
     private static OpenBaoSecretsEngine CreateEngine(RecordingHandler handler) =>
