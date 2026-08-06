@@ -64,6 +64,29 @@ public sealed class ApiSecurityTests
 
         using var session = await client.GetAsync("/api/auth/session");
         Assert.Equal(HttpStatusCode.OK, session.StatusCode);
+
+        // Signed in, but without the administrator policy. This has to be a 403 and not
+        // cookie auth's default redirect: the dashboard decides whether to show a member
+        // fallback by reading the status, and a 302 to a login page reads as success. The
+        // whole member experience was silently blank because of it.
+        using var forbidden = await client.GetAsync("/api/admin/teams");
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+    }
+
+    /// <summary>An unauthenticated API call answers 401, never a redirect.</summary>
+    [Fact]
+    public async Task Unauthenticated_api_calls_answer_401_rather_than_redirecting()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            builder.UseEnvironment("Development"));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost"),
+        });
+
+        using var response = await client.GetAsync("/api/auth/session");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     private sealed record CsrfResponse(string Token);

@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Box,
   Button,
   IconButton,
+  ListItemIcon,
+  Menu,
   MenuItem,
   Paper,
   Stack,
@@ -19,17 +20,13 @@ import {
 import AddIcon from "@mui/icons-material/AddOutlined";
 import DeleteIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import ArrowIcon from "@mui/icons-material/ArrowForwardOutlined";
+import MoreIcon from "@mui/icons-material/MoreVertOutlined";
+import SettingsIcon from "@mui/icons-material/SettingsOutlined";
 import { EmptyState, LoadingRow, PageHeader, isAdmin, useSession } from "@/components/AppShell";
 import EnvironmentChip from "@/components/EnvironmentChip";
 import FormDialog from "@/components/FormDialog";
 import { keys } from "@/lib/queryKeys";
-import {
-  createProject,
-  deleteProject,
-  errorMessage,
-  isForbidden,
-  listAdminProjects,
-} from "@/lib/client";
+import { createProject, deleteProject, errorMessage, listAdminProjects } from "@/lib/client";
 
 const secretsHref = (project: string, environment: string) =>
   `/projects/${encodeURIComponent(project)}/environments/${encodeURIComponent(environment)}/secrets`;
@@ -42,6 +39,8 @@ export default function ProjectsPage() {
   const [id, setId] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
+  const [menu, setMenu] = useState<{ project: string; at: HTMLElement } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const projects = useQuery({ queryKey: keys.projects, queryFn: listAdminProjects, retry: false });
 
@@ -51,9 +50,6 @@ export default function ProjectsPage() {
     onError: (deleteError) =>
       setError(errorMessage(deleteError, "The project could not be deleted.")),
   });
-
-  // Listing projects is an administrator endpoint, so everyone else navigates by path.
-  if (projects.isError && isForbidden(projects.error)) return <DirectAccess />;
 
   return (
     <>
@@ -99,18 +95,23 @@ export default function ProjectsPage() {
                 justifyContent="space-between"
                 alignItems={{ sm: "center" }}
               >
+                {/* The whole name is the link. It used to be plain text beside a small
+                    arrow icon, so the obvious thing to click did nothing. */}
                 <Box sx={{ minWidth: 0 }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography sx={{ fontWeight: 600 }}>{project.id}</Typography>
-                    <IconButton
-                      size="small"
-                      component={Link}
-                      href={`/projects/${encodeURIComponent(project.id)}`}
-                      aria-label={`Open ${project.id}`}
-                    >
-                      <ArrowIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
+                  <Typography
+                    component={Link}
+                    href={`/projects/${encodeURIComponent(project.id)}`}
+                    sx={{
+                      fontWeight: 600,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 0.5,
+                      "&:hover": { color: "primary.main" },
+                    }}
+                  >
+                    {project.id}
+                    <ArrowIcon fontSize="small" />
+                  </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {project.description || "No description"}
                   </Typography>
@@ -123,23 +124,15 @@ export default function ProjectsPage() {
                     </Link>
                   ))}
                   {admin && (
-                    <Tooltip title="Delete project">
+                    <Tooltip title="Project options">
                       <IconButton
                         size="small"
-                        color="error"
-                        disabled={removeProject.isPending}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `Delete project "${project.id}"? Its secrets stay in OpenBao but the project entry and its policies are removed.`,
-                            )
-                          ) {
-                            setError("");
-                            removeProject.mutate(project.id);
-                          }
-                        }}
+                        aria-label={`Options for ${project.id}`}
+                        onClick={(event) =>
+                          setMenu({ project: project.id, at: event.currentTarget })
+                        }
                       >
-                        <DeleteIcon fontSize="small" />
+                        <MoreIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
                   )}
@@ -149,6 +142,47 @@ export default function ProjectsPage() {
           ))}
         </Stack>
       )}
+
+      <Menu
+        anchorEl={menu?.at ?? null}
+        open={menu !== null}
+        onClose={() => setMenu(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+      >
+        <MenuItem
+          component={Link}
+          href={`/projects/${encodeURIComponent(menu?.project ?? "")}/settings`}
+          onClick={() => setMenu(null)}
+        >
+          <ListItemIcon>
+            <SettingsIcon fontSize="small" />
+          </ListItemIcon>
+          Settings
+        </MenuItem>
+        <MenuItem
+          sx={{ color: "error.main" }}
+          onClick={() => {
+            setConfirmDelete(menu?.project ?? null);
+            setMenu(null);
+          }}
+        >
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          Delete project
+        </MenuItem>
+      </Menu>
+
+      <DeleteProjectDialog
+        project={confirmDelete}
+        busy={removeProject.isPending}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={(name) => {
+          setError("");
+          removeProject.mutate(name);
+        }}
+      />
 
       <FormDialog
         open={creating}
@@ -186,57 +220,49 @@ export default function ProjectsPage() {
   );
 }
 
-/** Fallback for members who cannot list projects: open a known path directly. */
-function DirectAccess() {
-  const router = useRouter();
-  const [project, setProject] = useState("");
-  const [environment, setEnvironment] = useState("development");
-  const [path, setPath] = useState("");
-
-  function open(event: FormEvent) {
-    event.preventDefault();
-    const suffix = path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
-    router.push(`${secretsHref(project.trim(), environment)}${suffix ? `/${suffix}` : ""}`);
-  }
+/**
+ * Deleting a project used to be a browser confirm() behind a red bin icon sitting right
+ * next to the environment links. Typing the name is slower on purpose.
+ */
+function DeleteProjectDialog({
+  project,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  project: string | null;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (project: string) => void;
+}) {
+  const [typed, setTyped] = useState("");
 
   return (
-    <>
-      <PageHeader
-        title="Open a project"
-        description="Your account cannot list every project, so enter the one you have access to."
+    <FormDialog
+      open={project !== null}
+      title={`Delete ${project ?? ""}?`}
+      submitLabel="Delete project"
+      disabled={typed !== project || busy}
+      onClose={() => {
+        setTyped("");
+        onClose();
+      }}
+      onSubmit={() => {
+        if (project) onConfirm(project);
+      }}
+    >
+      <Alert severity="warning">
+        This removes the project and the access rules that go with it. The secrets themselves stay
+        in OpenBao.
+      </Alert>
+      <TextField
+        label="Type the project name to confirm"
+        value={typed}
+        onChange={(event) => setTyped(event.target.value)}
+        placeholder={project ?? ""}
+        autoFocus
+        fullWidth
       />
-      <Paper sx={{ p: 3, maxWidth: 560 }}>
-        <Stack component="form" onSubmit={open} spacing={2}>
-          <TextField
-            label="Project"
-            value={project}
-            onChange={(event) => setProject(event.target.value)}
-            required
-            autoFocus
-          />
-          <TextField
-            label="Environment"
-            select
-            value={environment}
-            onChange={(event) => setEnvironment(event.target.value)}
-          >
-            {["development", "staging", "production"].map((option) => (
-              <MenuItem key={option} value={option}>
-                {option}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            label="Folder or secret path"
-            value={path}
-            onChange={(event) => setPath(event.target.value)}
-            helperText="Optional. For example backend or services/api."
-          />
-          <Button type="submit" variant="contained" disabled={!project.trim()}>
-            Open secrets
-          </Button>
-        </Stack>
-      </Paper>
-    </>
+    </FormDialog>
   );
 }

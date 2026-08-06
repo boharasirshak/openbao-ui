@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -36,7 +35,6 @@ import {
   useSession,
 } from "@/components/AppShell";
 import EnvironmentChip from "@/components/EnvironmentChip";
-import FormDialog from "@/components/FormDialog";
 import { CopyButton, MaskedValue } from "@/components/SecretValue";
 import {
   approveChange,
@@ -119,14 +117,12 @@ export default function ChangesPage() {
 
   return (
     <>
+      {/* Titled to match the sidebar. It said "Changes" there and "Approvals" here,
+          which reads as two different screens. The back link went too — the sidebar
+          is always present now. */}
       <PageHeader
-        title="Changes"
+        title="Approvals"
         description="Edits to a protected environment wait here until somebody other than the author approves them."
-        actions={
-          <Button component={Link} href={`/projects/${encodeURIComponent(project)}`}>
-            Back to project
-          </Button>
-        }
       />
 
       {notice && (
@@ -294,29 +290,38 @@ export default function ChangesPage() {
         />
       )}
 
-      <FormDialog
+      {/* A plain dialog, not FormDialog: this only shows values, so it needs one way
+          out. FormDialog always adds Cancel, which left two buttons doing the same job. */}
+      <Dialog
         open={inspecting !== null}
-        title={`Proposed values — ${inspecting?.path ?? ""}`}
-        submitLabel="Close"
         onClose={() => setInspecting(null)}
-        onSubmit={() => setInspecting(null)}
+        fullWidth
+        maxWidth="sm"
       >
-        {proposed.isLoading ? (
-          <LoadingRow label="Reading the proposal…" />
-        ) : proposed.isError ? (
-          <Alert severity="error">
-            {errorMessage(proposed.error, "The proposed values could not be read.")}
-          </Alert>
-        ) : proposed.data === null ? (
-          <Alert severity="info">These values are no longer available.</Alert>
-        ) : (
-          <Stack spacing={1}>
-            {Object.entries(proposed.data?.values ?? {}).map(([key, value]) => (
-              <ProposedRow key={key} name={key} value={value} />
-            ))}
-          </Stack>
-        )}
-      </FormDialog>
+        <DialogTitle>Proposed values — {inspecting?.path ?? ""}</DialogTitle>
+        <DialogContent>
+          {proposed.isLoading ? (
+            <LoadingRow label="Reading the proposal…" />
+          ) : proposed.isError ? (
+            <Alert severity="error">
+              {errorMessage(proposed.error, "The proposed values could not be read.")}
+            </Alert>
+          ) : proposed.data === null ? (
+            <Alert severity="info">These values are no longer available.</Alert>
+          ) : (
+            <Stack spacing={1} sx={{ pt: 0.5 }}>
+              {Object.entries(proposed.data?.values ?? {}).map(([key, value]) => (
+                <ProposedRow key={key} name={key} value={value} />
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button variant="contained" onClick={() => setInspecting(null)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }
