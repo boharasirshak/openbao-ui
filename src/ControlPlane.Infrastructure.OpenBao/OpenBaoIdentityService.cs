@@ -3,8 +3,29 @@ using ControlPlane.Domain;
 
 namespace ControlPlane.Infrastructure.OpenBao;
 
-public sealed class OpenBaoIdentityService(OpenBaoAdministrativeClient client) : IIdentityService
+public sealed class OpenBaoIdentityService(
+    OpenBaoAdministrativeClient client,
+    Microsoft.Extensions.Options.IOptions<OpenBaoOptions> options) : IIdentityService
 {
+    /// <summary>
+    /// Every account leaves here holding member-base — the tiny grant that lets a person
+    /// file an access request and read project names. Writing the policy first makes
+    /// this self-healing: accounts created before the policy existed pick it up the next
+    /// time an administrator touches their roles.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> WithMemberBaseAsync(
+        IReadOnlyList<string> policies,
+        CancellationToken cancellationToken)
+    {
+        await client.PutAsync(
+            $"v1/sys/policies/acl/{MemberBasePolicy.Name}",
+            new { policy = MemberBasePolicy.Hcl(options.Value.MetadataMount) },
+            cancellationToken);
+        return policies.Contains(MemberBasePolicy.Name)
+            ? policies
+            : [.. policies, MemberBasePolicy.Name];
+    }
+
     public async Task<IReadOnlyList<Member>> ListAsync(CancellationToken cancellationToken)
     {
         var users = await client.GetAsync("v1/auth/userpass/users?list=true", cancellationToken);
@@ -37,6 +58,7 @@ public sealed class OpenBaoIdentityService(OpenBaoAdministrativeClient client) :
         IReadOnlyList<string> policies,
         CancellationToken cancellationToken)
     {
+        policies = await WithMemberBaseAsync(policies, cancellationToken);
         await client.PostAsync(
             $"v1/auth/userpass/users/{Uri.EscapeDataString(username)}",
             new { password, policies },
@@ -52,6 +74,7 @@ public sealed class OpenBaoIdentityService(OpenBaoAdministrativeClient client) :
 
     public async Task SetPoliciesAsync(string username, IReadOnlyList<string> policies, CancellationToken cancellationToken)
     {
+        policies = await WithMemberBaseAsync(policies, cancellationToken);
         await client.PostAsync(
             $"v1/auth/userpass/users/{Uri.EscapeDataString(username)}",
             new { policies },

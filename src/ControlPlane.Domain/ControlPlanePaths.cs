@@ -22,6 +22,13 @@ public static class ControlPlanePaths
     public static string ChangesMetadata(string mount, string project) =>
         $"{mount}/metadata/changes/{project}";
 
+    public static string AccessRequest(string mount, string project, string username) =>
+        $"{mount}/data/access-requests/{project}/{username}";
+
+    /// <summary>Listing requests is a LIST on the metadata path, not the data one.</summary>
+    public static string AccessRequestsMetadata(string mount, string project) =>
+        $"{mount}/metadata/access-requests/{project}";
+
     public static string Activity(string mount, string project) =>
         $"{mount}/data/activity/{project}";
 

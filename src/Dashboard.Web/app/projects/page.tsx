@@ -18,6 +18,7 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/AddOutlined";
+import KeyIcon from "@mui/icons-material/KeyOutlined";
 import DeleteIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import ArrowIcon from "@mui/icons-material/ArrowForwardOutlined";
 import MoreIcon from "@mui/icons-material/MoreVertOutlined";
@@ -25,6 +26,7 @@ import SettingsIcon from "@mui/icons-material/SettingsOutlined";
 import { EmptyState, LoadingRow, PageHeader, isAdmin, useSession } from "@/components/AppShell";
 import EnvironmentChip from "@/components/EnvironmentChip";
 import FormDialog from "@/components/FormDialog";
+import RequestAccessDialog from "@/components/RequestAccessDialog";
 import { keys } from "@/lib/queryKeys";
 import { createProject, deleteProject, errorMessage, listAdminProjects } from "@/lib/client";
 
@@ -41,6 +43,8 @@ export default function ProjectsPage() {
   const [error, setError] = useState("");
   const [menu, setMenu] = useState<{ project: string; at: HTMLElement } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const projects = useQuery({ queryKey: keys.projects, queryFn: listAdminProjects, retry: false });
 
@@ -61,9 +65,27 @@ export default function ProjectsPage() {
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>
               New project
             </Button>
-          ) : null
+          ) : (
+            // The way in when the project you need is not on your list — or the list
+            // is empty because you have no roles anywhere yet.
+            <Button variant="outlined" startIcon={<KeyIcon />} onClick={() => setRequesting(true)}>
+              Request access
+            </Button>
+          )
         }
       />
+
+      <RequestAccessDialog
+        open={requesting}
+        onClose={() => setRequesting(false)}
+        onSent={() => setNotice("Request sent. An administrator will review it.")}
+      />
+
+      {notice && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice("")}>
+          {notice}
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" onClose={() => setError("")} sx={{ mb: 2 }}>
@@ -82,7 +104,11 @@ export default function ProjectsPage() {
         <Paper>
           <EmptyState
             title="No projects yet"
-            hint={admin ? "Create one to get started." : "Ask an administrator to create one."}
+            hint={
+              admin
+                ? "Create one to get started."
+                : "Request access to the project your team uses, or ask an administrator."
+            }
           />
         </Paper>
       ) : (

@@ -1129,6 +1129,138 @@ export interface paths {
       };
     };
   };
+  "/api/projects/{project}/access-requests/options": {
+    get: {
+      parameters: {
+        path: {
+          project: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AccessRequestOptions"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/access-requests": {
+    get: {
+      parameters: {
+        path: {
+          project: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["AccessRequestResponse"][];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+    post: {
+      parameters: {
+        path: {
+          project: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateAccessRequest"];
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/access-requests/{username}/approve": {
+    post: {
+      parameters: {
+        path: {
+          project: string;
+          username: string;
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Forbidden */
+        403: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/access-requests/{username}/reject": {
+    post: {
+      parameters: {
+        path: {
+          project: string;
+          username: string;
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Forbidden */
+        403: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
   "/api/admin/teams": {
     get: {
       responses: {
@@ -1319,6 +1451,18 @@ export type webhooks = Record<string, never>;
 
 export interface components {
   schemas: {
+    AccessRequestOptions: {
+      roles: components["schemas"]["ProjectRoleOption"][];
+    };
+    AccessRequestResponse: {
+      username: string;
+      roles: components["schemas"]["ProjectRoleOption"][];
+      reason: null | string;
+      /** Format: date-time */
+      requestedAt: string;
+      status: string;
+      reviewedBy: null | string;
+    };
     AccessRoleResponse: {
       name: string;
       project: string;
@@ -1372,6 +1516,10 @@ export interface components {
     CompareResponse: {
       path: string;
       environments: components["schemas"]["EnvironmentSnapshot"][];
+    };
+    CreateAccessRequest: {
+      policies: string[];
+      reason: null | string;
     };
     CreateChangeRequest: {
       environment: string;

@@ -32,12 +32,16 @@ import {
   EmptyState,
   LoadingRow,
   PageHeader,
+  isAdmin,
   useSession,
 } from "@/components/AppShell";
 import EnvironmentChip from "@/components/EnvironmentChip";
 import { CopyButton, MaskedValue } from "@/components/SecretValue";
 import {
+  approveAccessRequest,
   approveChange,
+  listAccessRequests,
+  rejectAccessRequest,
   errorMessage,
   isForbidden,
   listChanges,
@@ -70,6 +74,32 @@ export default function ChangesPage() {
     queryKey: keys.changes(project),
     queryFn: () => listChanges(project),
     retry: false,
+  });
+
+  // Only administrators can grant access, so only they fetch the request queue.
+  const admin = isAdmin(session);
+  const accessRequests = useQuery({
+    queryKey: keys.accessRequests(project),
+    queryFn: () => listAccessRequests(project),
+    enabled: admin,
+    retry: false,
+  });
+
+  const reviewAccess = useMutation({
+    mutationFn: (input: { username: string; action: "approve" | "reject" }) =>
+      input.action === "approve"
+        ? approveAccessRequest(project, input.username)
+        : rejectAccessRequest(project, input.username),
+    onSuccess: async (_result, input) => {
+      setNotice(
+        input.action === "approve"
+          ? `${input.username} now has the access they asked for.`
+          : `${input.username}'s request was declined. Nothing changed.`,
+      );
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: keys.accessRequests(project) });
+    },
+    onError: (failure) => setError(errorMessage(failure, "The review could not be recorded.")),
   });
 
   const proposed = useQuery({
@@ -139,6 +169,91 @@ export default function ChangesPage() {
         <Alert severity="error" sx={{ mb: 2 }}>
           {errorMessage(changes.error, "The change list is unavailable.")}
         </Alert>
+      )}
+
+      {admin && (accessRequests.data?.length ?? 0) > 0 && (
+        <>
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Access requests
+          </Typography>
+          <Paper sx={{ overflow: "auto", mb: 3 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell width={160}>Person</TableCell>
+                  <TableCell>Wants</TableCell>
+                  <TableCell>Why</TableCell>
+                  <TableCell width={150}>Status</TableCell>
+                  <TableCell width={200} align="right" />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(accessRequests.data ?? []).map((request) => (
+                  <TableRow key={request.username} hover>
+                    <TableCell>
+                      {request.username}
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        {new Date(request.requestedAt).toLocaleString()}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {request.roles.map((role) => (
+                          <Chip
+                            key={role.policy}
+                            size="small"
+                            variant="outlined"
+                            label={role.label}
+                          />
+                        ))}
+                      </Stack>
+                    </TableCell>
+                    <TableCell sx={{ color: "text.secondary", fontSize: 13 }}>
+                      {request.reason ? `“${request.reason}”` : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {request.status === "Pending" ? (
+                        <Chip size="small" color="warning" label="Waiting" />
+                      ) : (
+                        <Chip
+                          size="small"
+                          color={request.status === "Approved" ? "success" : "default"}
+                          label={`${request.status}${request.reviewedBy ? ` by ${request.reviewedBy}` : ""}`}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {request.status === "Pending" && (
+                        <>
+                          <Button
+                            size="small"
+                            color="error"
+                            disabled={reviewAccess.isPending}
+                            onClick={() =>
+                              reviewAccess.mutate({ username: request.username, action: "reject" })
+                            }
+                          >
+                            Decline
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            disabled={reviewAccess.isPending}
+                            onClick={() =>
+                              reviewAccess.mutate({ username: request.username, action: "approve" })
+                            }
+                          >
+                            Grant access
+                          </Button>
+                        </>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Paper>
+        </>
       )}
 
       <Paper sx={{ overflow: "auto" }}>

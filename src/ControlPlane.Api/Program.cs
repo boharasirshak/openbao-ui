@@ -37,6 +37,7 @@ builder.Services.AddScoped<ITeamService, OpenBaoTeamService>();
 builder.Services.AddScoped<IAccessRoleService, OpenBaoAccessRoleService>();
 builder.Services.AddScoped<ICapabilityService, OpenBaoCapabilityService>();
 builder.Services.AddScoped<IChangeRequestService, OpenBaoChangeRequestService>();
+builder.Services.AddScoped<IAccessRequestService, OpenBaoAccessRequestService>();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -195,6 +196,7 @@ app.MapShareEndpoints();
 app.MapActivityEndpoints();
 app.MapChangeRequestEndpoints();
 app.MapProjectMemberEndpoints();
+app.MapAccessRequestEndpoints();
 app.MapTeamEndpoints();
 app.MapAccessRoleEndpoints();
 app.MapPermissionEndpoints();

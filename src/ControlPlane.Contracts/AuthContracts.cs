@@ -96,3 +96,15 @@ public sealed record ProjectMemberOptions(
     IReadOnlyList<string> Users,
     IReadOnlyList<ProjectRoleOption> Roles);
 public sealed record SetProjectRolesRequest(IReadOnlyList<string> Policies);
+
+/* ---------- access requests ---------- */
+
+public sealed record AccessRequestResponse(
+    string Username,
+    IReadOnlyList<ProjectRoleOption> Roles,
+    string? Reason,
+    DateTimeOffset RequestedAt,
+    string Status,
+    string? ReviewedBy);
+public sealed record CreateAccessRequest(IReadOnlyList<string> Policies, string? Reason);
+public sealed record AccessRequestOptions(IReadOnlyList<ProjectRoleOption> Roles);

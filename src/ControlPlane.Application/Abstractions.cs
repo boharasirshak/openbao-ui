@@ -150,6 +150,22 @@ public interface IChangeRequestService
     Task<ChangeRequest> WithdrawAsync(ProjectId project, string id, string requester, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Asking for a role on a project you cannot touch yet. Submitting runs with the
+/// caller's own token under the member-base grant; approving merges the requested
+/// roles into the person's existing access without touching anything else they have.
+/// </summary>
+public interface IAccessRequestService
+{
+    Task<IReadOnlyList<AccessRequest>> ListAsync(ProjectId project, CancellationToken cancellationToken);
+    Task SubmitAsync(AccessRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Grants the requested roles and closes the request. The requester cannot do this.</summary>
+    Task<AccessRequest> ApproveAsync(ProjectId project, string username, string reviewer, CancellationToken cancellationToken);
+
+    Task<AccessRequest> RejectAsync(ProjectId project, string username, string reviewer, CancellationToken cancellationToken);
+}
+
 public interface IMachineIdentityService
 {
     Task<IReadOnlyList<MachineIdentity>> ListAsync(CancellationToken cancellationToken);

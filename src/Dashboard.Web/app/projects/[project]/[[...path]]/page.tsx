@@ -27,9 +27,11 @@ import FolderIcon from "@mui/icons-material/FolderOutlined";
 import FileIcon from "@mui/icons-material/DescriptionOutlined";
 import LockIcon from "@mui/icons-material/LockOutlined";
 import ShieldIcon from "@mui/icons-material/VerifiedUserOutlined";
+import KeyIcon from "@mui/icons-material/KeyOutlined";
 import { EmptyState, LoadingRow, PageHeader } from "@/components/AppShell";
 import EnvironmentChip from "@/components/EnvironmentChip";
 import FormDialog from "@/components/FormDialog";
+import RequestAccessDialog from "@/components/RequestAccessDialog";
 import { errorMessage, isForbidden, listSecretEntries } from "@/lib/client";
 import { keys as queryKeys } from "@/lib/queryKeys";
 import { mono } from "@/lib/theme";
@@ -51,6 +53,8 @@ export default function ProjectOverviewPage() {
   const root = `/projects/${encodeURIComponent(project)}`;
   const { description, environments, isLoading, isError, error } = useProjectEnvironments(project);
   const [creating, setCreating] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const listings = useQueries({
     queries: environments.map((environment) => ({
@@ -106,6 +110,7 @@ export default function ProjectOverviewPage() {
     left.isFolder === right.isFolder ? left.name.localeCompare(right.name) : left.isFolder ? -1 : 1,
   );
   const stillLoading = isLoading || listings.some((listing) => listing.isLoading);
+  const somethingLocked = listings.some((listing) => listing.isError && isForbidden(listing.error));
 
   return (
     <>
@@ -142,11 +147,35 @@ export default function ProjectOverviewPage() {
             : `Folder ${path}`
         }
         actions={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>
-            New secret
-          </Button>
+          <>
+            {somethingLocked && (
+              <Button
+                variant="outlined"
+                startIcon={<KeyIcon />}
+                onClick={() => setRequesting(true)}
+              >
+                Request access
+              </Button>
+            )}
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>
+              New secret
+            </Button>
+          </>
         }
       />
+
+      <RequestAccessDialog
+        open={requesting}
+        project={project}
+        onClose={() => setRequesting(false)}
+        onSent={() => setNotice("Request sent. An administrator will review it.")}
+      />
+
+      {notice && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice("")}>
+          {notice}
+        </Alert>
+      )}
 
       {isError && (
         <Alert severity="error" sx={{ mb: 2 }}>

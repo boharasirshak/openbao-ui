@@ -681,3 +681,41 @@ export const setProjectRoles = (project: string, username: string, policies: str
     "The member's access could not be changed.",
     { policies },
   );
+
+/* ---------- access requests ---------- */
+
+export type AccessRequest = Schemas["AccessRequestResponse"];
+
+export const accessRequestOptions = (project: string): Promise<Schemas["AccessRequestOptions"]> =>
+  read(
+    `/api/projects/${encodeURIComponent(project)}/access-requests/options`,
+    "The role list could not be loaded. Check the project name.",
+  );
+
+export const submitAccessRequest = (project: string, policies: string[], reason: string) =>
+  send(
+    `/api/projects/${encodeURIComponent(project)}/access-requests`,
+    "POST",
+    "The request could not be sent.",
+    { policies, reason: reason || null },
+  );
+
+export const listAccessRequests = (project: string): Promise<AccessRequest[]> =>
+  read(
+    `/api/projects/${encodeURIComponent(project)}/access-requests`,
+    "Access requests are unavailable.",
+  );
+
+export const approveAccessRequest = (project: string, username: string) =>
+  send(
+    `/api/projects/${encodeURIComponent(project)}/access-requests/${encodeURIComponent(username)}/approve`,
+    "POST",
+    "The request could not be approved.",
+  );
+
+export const rejectAccessRequest = (project: string, username: string) =>
+  send(
+    `/api/projects/${encodeURIComponent(project)}/access-requests/${encodeURIComponent(username)}/reject`,
+    "POST",
+    "The request could not be rejected.",
+  );
