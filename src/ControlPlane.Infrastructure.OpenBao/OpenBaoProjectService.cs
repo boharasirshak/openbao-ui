@@ -8,17 +8,21 @@ public sealed class OpenBaoProjectService(
     OpenBaoAdministrativeClient client,
     Microsoft.Extensions.Options.IOptions<OpenBaoOptions> options) : IProjectService
 {
+    /// <summary>
+    /// Every project the caller can see, which for a member is the ones they hold a role
+    /// on. This used to read sys/mounts, which only an administrator may list, so a
+    /// member got nothing and the dashboard fell back to asking them to type a project
+    /// name from memory. sys/internal/ui/mounts answers the same question scoped to the
+    /// caller's own token, which is exactly what is wanted here.
+    /// </summary>
     public async Task<IReadOnlyList<Project>> ListAsync(CancellationToken cancellationToken)
     {
-        var mounts = await client.GetAsync("v1/sys/mounts", cancellationToken);
-        if (mounts is null)
+        var mounts = await client.GetAsync("v1/sys/internal/ui/mounts", cancellationToken);
+        if (mounts?.RootElement.TryGetProperty("data", out var envelope) != true
+            || !envelope.TryGetProperty("secret", out var mountData))
         {
             return [];
         }
-
-        var mountData = mounts.RootElement.TryGetProperty("data", out var data)
-            ? data
-            : mounts.RootElement;
         var projects = new List<Project>();
         foreach (var property in mountData.EnumerateObject().Where(property =>
                      property.Value.TryGetProperty("type", out var type)
@@ -341,7 +345,6 @@ public sealed class OpenBaoProjectService(
         bool readOnly,
         CancellationToken cancellationToken)
     {
-        var suffix = readOnly ? "viewer" : "editor";
         var data = SecretLocation.DataPrefix(project.Value, environment.Value);
         var metadata = SecretLocation.MetadataPrefix(project.Value, environment.Value);
         var policy = $"path \"{data}/*\" {{ capabilities = {(readOnly ? ReadData : WriteData)} }}\n"
@@ -360,7 +363,7 @@ public sealed class OpenBaoProjectService(
         policy += ControlPlaneAccess(project, canWriteChanges: !readOnly);
 
         return client.PutAsync(
-            $"v1/sys/policies/acl/{project}-{environment}-{suffix}",
+            $"v1/sys/policies/acl/{ProjectPolicy.Environment(project, environment, readOnly)}",
             new { policy },
             cancellationToken);
     }
@@ -373,7 +376,7 @@ public sealed class OpenBaoProjectService(
             + $"path \"{SecretLocation.MetadataPrefix(project.Value, "*")}\" {{ capabilities = {OwnMetadata} }}"
             + ControlPlaneAccess(project, canWriteChanges: true);
         return client.PutAsync(
-            $"v1/sys/policies/acl/{project}-admin",
+            $"v1/sys/policies/acl/{ProjectPolicy.Admin(project)}",
             new { policy },
             cancellationToken);
     }

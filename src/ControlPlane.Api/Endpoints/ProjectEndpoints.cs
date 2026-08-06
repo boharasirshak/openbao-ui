@@ -11,13 +11,18 @@ public static class ProjectEndpoints
         var projects = app.MapGroup("/api/admin/projects")
             .RequireAuthorization(ApiClaims.AdminPolicy);
 
-        projects.MapGet(
-                "/",
+        // Reading your own project list is not an administrative act, and gating it
+        // behind the admin policy left members with no way to find their projects at
+        // all. The listing is scoped by the caller's token inside OpenBao, so a member
+        // only ever sees what they hold a role on. Creating and deleting stay admin-only.
+        app.MapGet(
+                "/api/admin/projects",
                 async (IProjectService service, CancellationToken cancellationToken) =>
                 {
                     var found = await service.ListAsync(cancellationToken);
                     return Results.Ok(found.Select(ToResponse).ToList());
                 })
+            .RequireAuthorization()
             .Produces<IReadOnlyList<ProjectResponse>>();
 
         // Creating an existing project is idempotent: the mount is left alone and the

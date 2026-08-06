@@ -84,3 +84,27 @@ public sealed record SaveAccessRoleRequest(
     string? Description);
 
 public sealed record AssignablePoliciesResponse(IReadOnlyList<string> Policies);
+
+/* ---------- per-project members ---------- */
+
+public sealed record ProjectRoleOption(string Policy, string Label);
+public sealed record ProjectMemberResponse(
+    string Username,
+    bool Disabled,
+    IReadOnlyList<ProjectRoleOption> Roles);
+public sealed record ProjectMemberOptions(
+    IReadOnlyList<string> Users,
+    IReadOnlyList<ProjectRoleOption> Roles);
+public sealed record SetProjectRolesRequest(IReadOnlyList<string> Policies);
+
+/* ---------- access requests ---------- */
+
+public sealed record AccessRequestResponse(
+    string Username,
+    IReadOnlyList<ProjectRoleOption> Roles,
+    string? Reason,
+    DateTimeOffset RequestedAt,
+    string Status,
+    string? ReviewedBy);
+public sealed record CreateAccessRequest(IReadOnlyList<string> Policies, string? Reason);
+public sealed record AccessRequestOptions(IReadOnlyList<ProjectRoleOption> Roles);

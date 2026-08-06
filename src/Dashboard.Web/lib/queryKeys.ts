@@ -24,4 +24,6 @@ export const keys = {
   assignablePolicies: ["assignable-policies"] as const,
   accessRoles: (project: string) => ["projects", project, "access-roles"] as const,
   changes: (project: string) => ["projects", project, "changes"] as const,
+  projectMembers: (project: string) => ["projects", project, "members"] as const,
+  accessRequests: (project: string) => ["projects", project, "access-requests"] as const,
 };

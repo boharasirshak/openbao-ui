@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -13,6 +13,8 @@ import {
   Collapse,
   IconButton,
   InputAdornment,
+  ListItemIcon,
+  ListItemText,
   Menu,
   MenuItem,
   Paper,
@@ -42,8 +44,9 @@ import CompareIcon from "@mui/icons-material/DifferenceOutlined";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForeverOutlined";
 import RestoreIcon from "@mui/icons-material/SettingsBackupRestoreOutlined";
 import UndoIcon from "@mui/icons-material/UndoOutlined";
+import MoreIcon from "@mui/icons-material/MoreVertOutlined";
+import ShieldIcon from "@mui/icons-material/VerifiedUserOutlined";
 import { EmptyState, LoadingRow, PageHeader } from "@/components/AppShell";
-import EnvironmentChip from "@/components/EnvironmentChip";
 import FormDialog from "@/components/FormDialog";
 import { CopyButton } from "@/components/SecretValue";
 import SecretMetadataPanel from "@/components/secrets/SecretMetadataPanel";
@@ -52,6 +55,7 @@ import { downloadText, isValidKey, parseSecretFile } from "@/lib/dotenv";
 import { mono } from "@/lib/theme";
 // Aliased: this file already has a local `keys` for the filtered key list.
 import { keys as queryKeys } from "@/lib/queryKeys";
+import { useProjectEnvironments } from "@/lib/useProjectEnvironments";
 import {
   deleteSecret,
   errorMessage,
@@ -73,6 +77,55 @@ import {
 // would defeat the memoised key list below.
 const NO_VALUES: Record<string, string> = {};
 
+/**
+ * Names a new secret. KV-v2 has no such thing as an empty folder — a folder exists
+ * only because something sits beneath it — so there is deliberately no "new folder"
+ * button. Typing a slash here is how you make one.
+ */
+function NewSecretDialog({
+  open,
+  base,
+  onClose,
+}: {
+  open: boolean;
+  base: string;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+
+  const segments = name.split("/").filter(Boolean);
+  const valid =
+    segments.length > 0 && segments.every((segment) => /^[A-Za-z0-9_-]+$/.test(segment));
+
+  return (
+    <FormDialog
+      open={open}
+      title="New secret"
+      submitLabel="Create"
+      disabled={!valid}
+      onClose={() => {
+        setName("");
+        onClose();
+      }}
+      onSubmit={() => {
+        router.push(`${base}/${segments.map(encodeURIComponent).join("/")}`);
+      }}
+    >
+      <TextField
+        label="Name"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        placeholder="checkout-api"
+        helperText="Use a slash to put it in a folder, like billing/stripe."
+        error={name.length > 0 && !valid}
+        autoFocus
+        fullWidth
+      />
+    </FormDialog>
+  );
+}
+
 export default function SecretsPage() {
   const params = useParams<{ project: string; environment: string; path?: string[] }>();
   const project = String(params.project);
@@ -82,6 +135,10 @@ export default function SecretsPage() {
   const base = `/projects/${encodeURIComponent(project)}/environments/${encodeURIComponent(environment)}/secrets`;
 
   const queryClient = useQueryClient();
+  const [creating, setCreating] = useState(false);
+  const { environments } = useProjectEnvironments(project);
+  const isProtected =
+    environments.find((candidate) => candidate.id === environment)?.protected ?? false;
   const entries = useQuery({
     queryKey: queryKeys.entries(project, environment, path),
     queryFn: () => listSecretEntries(project, environment, path),
@@ -118,27 +175,37 @@ export default function SecretsPage() {
                 );
               })}
             </Breadcrumbs>
-            <EnvironmentChip environment={environment} />
           </Stack>
         }
         description={path ? `Path ${path}` : "Top level of this environment"}
         actions={
-          <Tooltip title="Reload">
-            <IconButton
-              onClick={() =>
-                queryClient.invalidateQueries({ queryKey: queryKeys.env(project, environment) })
-              }
-              aria-label="Reload"
-            >
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
+          <>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>
+              New secret
+            </Button>
+            <Tooltip title="Reload">
+              <IconButton
+                onClick={() =>
+                  queryClient.invalidateQueries({ queryKey: queryKeys.env(project, environment) })
+                }
+                aria-label="Reload"
+              >
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+          </>
         }
       />
 
-      {environment === "production" && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          This is production. Saved changes take effect immediately.
+      <NewSecretDialog open={creating} base={base} onClose={() => setCreating(false)} />
+
+      {/* Driven by the environment's own protected flag, not by the name "production".
+          It used to say changes here take effect immediately, which is the opposite of
+          what a protected environment now does. */}
+      {isProtected && (
+        <Alert severity="info" icon={<ShieldIcon fontSize="small" />} sx={{ mb: 2 }}>
+          Changes here need someone else&apos;s approval before they go live. Save as normal and we
+          will send it for review.
         </Alert>
       )}
 
@@ -201,10 +268,15 @@ export default function SecretsPage() {
         documents.length === 0 &&
         !entries.isLoading && (
           <Paper>
-            <EmptyState
-              title="Nothing here yet"
-              hint="Add a folder or secret name to the address bar to create the first one."
-            />
+            <Stack alignItems="center" spacing={2} sx={{ py: 6 }}>
+              <EmptyState
+                title="No secrets here yet"
+                hint="Secrets are values your app needs at runtime, like an API key."
+              />
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreating(true)}>
+                New secret
+              </Button>
+            </Stack>
           </Paper>
         )
       )}
@@ -243,6 +315,7 @@ function SecretEditor({
   const [importText, setImportText] = useState("");
   const [exportMenu, setExportMenu] = useState<HTMLElement | null>(null);
   const [showVersions, setShowVersions] = useState(false);
+  const [moreMenu, setMoreMenu] = useState<HTMLElement | null>(null);
   // Set when a protected environment refuses a direct write; holds the edit until the
   // author gives a reason and sends it for review.
   const [pendingReview, setPendingReview] = useState<{
@@ -588,9 +661,14 @@ function SecretEditor({
           fullWidth
         />
 
+        {/* Three tiers, not one row of seven. Saving is the thing you came to do;
+            looking around is quieter; the two irreversible ones are behind a menu so
+            "Destroy everything" cannot be clicked while aiming for "Version history". */}
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          {/* "Save values", not "Save changes": the Details section below has its own
+              save, and a global-sounding label here made people think one covered both. */}
           <Button variant="contained" onClick={save} disabled={!dirty || saving}>
-            {saving ? "Saving…" : dirty ? "Save changes" : "Saved"}
+            {saving ? "Saving…" : dirty ? "Save values" : "Saved"}
           </Button>
           <Button
             onClick={() => {
@@ -602,13 +680,29 @@ function SecretEditor({
           >
             Discard
           </Button>
-          <Button startIcon={<HistoryIcon />} onClick={() => setShowVersions((value) => !value)}>
-            {showVersions ? "Hide history" : "Version history"}
+
+          <Box sx={{ flex: 1 }} />
+
+          <Button
+            size="small"
+            color="inherit"
+            startIcon={<HistoryIcon />}
+            onClick={() => setShowVersions((value) => !value)}
+          >
+            {showVersions ? "Hide history" : "History"}
           </Button>
-          <Button startIcon={<ShareIcon />} onClick={() => setSharing(true)} disabled={dirty}>
+          <Button
+            size="small"
+            color="inherit"
+            startIcon={<ShareIcon />}
+            onClick={() => setSharing(true)}
+            disabled={dirty}
+          >
             Share once
           </Button>
           <Button
+            size="small"
+            color="inherit"
             component={Link}
             href={`/projects/${encodeURIComponent(project)}/compare/${path
               .split("/")
@@ -618,14 +712,48 @@ function SecretEditor({
           >
             Compare
           </Button>
-          <Box sx={{ flex: 1 }} />
-          <Button color="error" startIcon={<DeleteIcon />} onClick={removeDocument}>
-            Delete secret
-          </Button>
-          <Button color="error" startIcon={<DeleteForeverIcon />} onClick={purgeDocument}>
-            Destroy everything
-          </Button>
+          <Tooltip title="More actions">
+            <IconButton
+              size="small"
+              aria-label="More actions"
+              onClick={(event) => setMoreMenu(event.currentTarget)}
+            >
+              <MoreIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Stack>
+
+        <Menu
+          anchorEl={moreMenu}
+          open={moreMenu !== null}
+          onClose={() => setMoreMenu(null)}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
+          <MenuItem
+            onClick={() => {
+              setMoreMenu(null);
+              void removeDocument();
+            }}
+          >
+            <ListItemIcon>
+              <DeleteIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Delete secret" secondary="You can bring it back." />
+          </MenuItem>
+          <MenuItem
+            sx={{ color: "error.main" }}
+            onClick={() => {
+              setMoreMenu(null);
+              void purgeDocument();
+            }}
+          >
+            <ListItemIcon>
+              <DeleteForeverIcon fontSize="small" color="error" />
+            </ListItemIcon>
+            <ListItemText primary="Destroy for good" secondary="Erased. Cannot be undone." />
+          </MenuItem>
+        </Menu>
 
         <SecretMetadataPanel project={project} environment={environment} path={path} />
 

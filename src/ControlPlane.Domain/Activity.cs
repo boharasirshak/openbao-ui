@@ -15,6 +15,7 @@ public enum ActivityAction
     ChangeApplied,
     ChangeRejected,
     ChangeWithdrawn,
+    AccessChanged,
 }
 
 /// <summary>

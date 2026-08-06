@@ -37,6 +37,7 @@ builder.Services.AddScoped<ITeamService, OpenBaoTeamService>();
 builder.Services.AddScoped<IAccessRoleService, OpenBaoAccessRoleService>();
 builder.Services.AddScoped<ICapabilityService, OpenBaoCapabilityService>();
 builder.Services.AddScoped<IChangeRequestService, OpenBaoChangeRequestService>();
+builder.Services.AddScoped<IAccessRequestService, OpenBaoAccessRequestService>();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -78,9 +79,20 @@ builder.Services
             : CookieSecurePolicy.Always;
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.SlidingExpiration = false;
+        // This is an API, so both of these must answer with a status code. Cookie auth
+        // redirects by default, which is right for a server-rendered site and wrong
+        // here: a signed-in member hitting an administrator endpoint got a 302 to a
+        // login page, so the client saw 200 and some HTML instead of 403. Every
+        // "you cannot see this, here is the fallback" path in the dashboard depends on
+        // reading a real 403, and all of them silently showed nothing.
         options.Events.OnRedirectToLogin = context =>
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         };
     });
@@ -183,6 +195,8 @@ app.MapDiscoveryEndpoints();
 app.MapShareEndpoints();
 app.MapActivityEndpoints();
 app.MapChangeRequestEndpoints();
+app.MapProjectMemberEndpoints();
+app.MapAccessRequestEndpoints();
 app.MapTeamEndpoints();
 app.MapAccessRoleEndpoints();
 app.MapPermissionEndpoints();

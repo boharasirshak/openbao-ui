@@ -310,7 +310,7 @@ public sealed class UserpassLoginTests(OpenBaoFixture fixture)
             Address = _address,
             ControlToken = "test-root",
         });
-        var identities = new OpenBaoIdentityService(new OpenBaoAdministrativeClient(client, options));
+        var identities = new OpenBaoIdentityService(new OpenBaoAdministrativeClient(client, options), options);
 
         var username = OpenBaoFixture.NewName("member");
         await identities.CreateAsync(username, "member-password", ["default"], CancellationToken.None);

@@ -28,14 +28,31 @@ import StorageIcon from "@mui/icons-material/StorageOutlined";
 import LogoutIcon from "@mui/icons-material/LogoutOutlined";
 import MenuIcon from "@mui/icons-material/Menu";
 import LockIcon from "@mui/icons-material/LockOutlined";
+import BackIcon from "@mui/icons-material/ArrowBackOutlined";
+import SearchIcon from "@mui/icons-material/SearchOutlined";
+import GridIcon from "@mui/icons-material/GridViewOutlined";
+import ApprovalIcon from "@mui/icons-material/RuleOutlined";
+import HistoryIcon from "@mui/icons-material/HistoryOutlined";
+import SettingsIcon from "@mui/icons-material/SettingsOutlined";
+import ShieldIcon from "@mui/icons-material/VerifiedUserOutlined";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { getSession, logout, type SessionResponse } from "@/lib/client";
 import ThemeModeToggle from "@/components/ui/ThemeModeToggle";
 import { keys } from "@/lib/queryKeys";
+import { useProjectEnvironments } from "@/lib/useProjectEnvironments";
 
 const DRAWER_WIDTH = 248;
 
 const SessionContext = createContext<SessionResponse | null>(null);
+
+/**
+ * The project the URL is inside, or null on the projects list and the admin pages.
+ * Decides whether the sidebar shows the workspace or one project's own sections.
+ */
+function projectInPath(pathname: string): string | null {
+  const match = /^\/projects\/([^/]+)/.exec(pathname);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 export function useSession() {
   return useContext(SessionContext);
@@ -82,6 +99,165 @@ const NAV: { heading: string; items: NavItem[] }[] = [
   },
 ];
 
+/** The project's own sections, in the order someone actually reaches for them. */
+const PROJECT_NAV: { slug: string; label: string; icon: ReactNode }[] = [
+  { slug: "search", label: "Search", icon: <SearchIcon fontSize="small" /> },
+  { slug: "changes", label: "Approvals", icon: <ApprovalIcon fontSize="small" /> },
+  { slug: "members", label: "Members", icon: <PeopleIcon fontSize="small" /> },
+  { slug: "activity", label: "Activity", icon: <HistoryIcon fontSize="small" /> },
+  { slug: "roles", label: "Roles", icon: <ShieldIcon fontSize="small" /> },
+  { slug: "settings", label: "Settings", icon: <SettingsIcon fontSize="small" /> },
+];
+
+/** Path segments under a project that are pages of their own, not overview folders. */
+const PROJECT_SECTIONS = ["environments", "compare", ...PROJECT_NAV.map((item) => item.slug)];
+
+function SidebarHeading({ children }: { children: ReactNode }) {
+  return (
+    <Typography
+      variant="caption"
+      sx={{
+        px: 2.5,
+        color: "text.secondary",
+        letterSpacing: 0.6,
+        textTransform: "uppercase",
+        fontSize: 11,
+      }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
+function SidebarItem({
+  href,
+  label,
+  icon,
+  selected,
+  onNavigate,
+  trailing,
+}: {
+  href: string;
+  label: ReactNode;
+  icon?: ReactNode;
+  selected: boolean;
+  onNavigate: () => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <ListItemButton
+      component={Link}
+      href={href}
+      onClick={onNavigate}
+      selected={selected}
+      sx={{
+        mx: 1.5,
+        borderRadius: 1,
+        "&.Mui-selected": {
+          bgcolor: "action.selected",
+          "& .MuiListItemIcon-root": { color: "primary.main" },
+        },
+      }}
+    >
+      {icon && <ListItemIcon sx={{ minWidth: 34, color: "text.secondary" }}>{icon}</ListItemIcon>}
+      <ListItemText primary={label} />
+      {trailing}
+    </ListItemButton>
+  );
+}
+
+/**
+ * Everything about one project, shown while you are inside it. The project's sections
+ * used to be six identical text links in the page header, which meant they were only
+ * reachable from the project page — going from a secret to Activity took a trip back up.
+ */
+function ProjectNav({
+  project,
+  pathname,
+  onNavigate,
+}: {
+  project: string;
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const { environments } = useProjectEnvironments(project);
+  const root = `/projects/${encodeURIComponent(project)}`;
+  // The environment currently open, so the sidebar shows where you are.
+  const current = /\/environments\/([^/]+)/.exec(pathname)?.[1];
+  // Overview owns every path that is not one of the named sections.
+  const onOverview =
+    pathname === root ||
+    (pathname.startsWith(`${root}/`) &&
+      !PROJECT_SECTIONS.some((section) => pathname.startsWith(`${root}/${section}`)));
+
+  return (
+    <>
+      <Box sx={{ mb: 1 }}>
+        <List dense disablePadding>
+          <SidebarItem
+            href="/projects"
+            label="All projects"
+            icon={<BackIcon fontSize="small" />}
+            selected={false}
+            onNavigate={onNavigate}
+          />
+        </List>
+        <Typography sx={{ px: 2.5, pt: 1.5, fontWeight: 600 }} noWrap title={project}>
+          {project}
+        </Typography>
+        <List dense disablePadding sx={{ mt: 0.5 }}>
+          <SidebarItem
+            href={root}
+            label="Overview"
+            icon={<GridIcon fontSize="small" />}
+            selected={onOverview}
+            onNavigate={onNavigate}
+          />
+        </List>
+      </Box>
+
+      <Box sx={{ mb: 1 }}>
+        <SidebarHeading>Environments</SidebarHeading>
+        <List dense disablePadding sx={{ mt: 0.5 }}>
+          {environments.map((environment) => (
+            <SidebarItem
+              key={environment.id}
+              href={`${root}/environments/${encodeURIComponent(environment.id)}/secrets`}
+              label={environment.displayName}
+              icon={<FolderIcon fontSize="small" />}
+              selected={current === environment.id}
+              onNavigate={onNavigate}
+              trailing={
+                environment.protected ? (
+                  <Tooltip title="Changes here need approval">
+                    <ShieldIcon sx={{ fontSize: 15, color: "warning.main" }} />
+                  </Tooltip>
+                ) : undefined
+              }
+            />
+          ))}
+        </List>
+      </Box>
+
+      <Box sx={{ mb: 1 }}>
+        <SidebarHeading>Project</SidebarHeading>
+        <List dense disablePadding sx={{ mt: 0.5 }}>
+          {PROJECT_NAV.map((item) => (
+            <SidebarItem
+              key={item.slug}
+              href={`${root}/${item.slug}`}
+              label={item.label}
+              icon={item.icon}
+              selected={pathname.startsWith(`${root}/${item.slug}`)}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </List>
+      </Box>
+    </>
+  );
+}
+
 function expiresIn(session: SessionResponse | null): string {
   if (!session?.expiresAt) return "";
   const minutes = Math.round((new Date(session.expiresAt).getTime() - Date.now()) / 60_000);
@@ -93,11 +269,13 @@ function expiresIn(session: SessionResponse | null): string {
 function SidebarContent({
   session,
   pathname,
+  project,
   onNavigate,
   onSignOut,
 }: {
   session: SessionResponse;
   pathname: string;
+  project: string | null;
   onNavigate: () => void;
   onSignOut: () => void;
 }) {
@@ -117,50 +295,31 @@ function SidebarContent({
       <Divider />
 
       <Box sx={{ flex: 1, overflowY: "auto", py: 1 }}>
-        {NAV.map((group) => {
-          const items = group.items.filter((item) => admin || !item.adminOnly);
-          if (items.length === 0) return null;
-          return (
-            <Box key={group.heading} sx={{ mb: 1 }}>
-              <Typography
-                variant="caption"
-                sx={{
-                  px: 2.5,
-                  color: "text.secondary",
-                  letterSpacing: 0.6,
-                  textTransform: "uppercase",
-                  fontSize: 11,
-                }}
-              >
-                {group.heading}
-              </Typography>
-              <List dense disablePadding sx={{ mt: 0.5 }}>
-                {items.map((item) => (
-                  <ListItemButton
-                    key={item.href}
-                    component={Link}
-                    href={item.href}
-                    onClick={onNavigate}
-                    selected={pathname.startsWith(item.href)}
-                    sx={{
-                      mx: 1.5,
-                      borderRadius: 1,
-                      "&.Mui-selected": {
-                        bgcolor: "action.selected",
-                        "& .MuiListItemIcon-root": { color: "primary.main" },
-                      },
-                    }}
-                  >
-                    <ListItemIcon sx={{ minWidth: 34, color: "text.secondary" }}>
-                      {item.icon}
-                    </ListItemIcon>
-                    <ListItemText primary={item.label} />
-                  </ListItemButton>
-                ))}
-              </List>
-            </Box>
-          );
-        })}
+        {project ? (
+          <ProjectNav project={project} pathname={pathname} onNavigate={onNavigate} />
+        ) : (
+          NAV.map((group) => {
+            const items = group.items.filter((item) => admin || !item.adminOnly);
+            if (items.length === 0) return null;
+            return (
+              <Box key={group.heading} sx={{ mb: 1 }}>
+                <SidebarHeading>{group.heading}</SidebarHeading>
+                <List dense disablePadding sx={{ mt: 0.5 }}>
+                  {items.map((item) => (
+                    <SidebarItem
+                      key={item.href}
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      selected={pathname.startsWith(item.href)}
+                      onNavigate={onNavigate}
+                    />
+                  ))}
+                </List>
+              </Box>
+            );
+          })
+        )}
       </Box>
 
       <Divider />
@@ -237,6 +396,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <SidebarContent
       session={session.data}
       pathname={pathname}
+      project={projectInPath(pathname)}
       onNavigate={() => setMobileOpen(false)}
       onSignOut={signOut}
     />

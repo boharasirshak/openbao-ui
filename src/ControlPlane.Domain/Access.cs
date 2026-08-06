@@ -66,7 +66,7 @@ public sealed record AccessRole(
     string? Description = null)
 {
     /// <summary>The ACL policy name. Prefixed so a role cannot shadow a system policy.</summary>
-    public string PolicyName => $"{Project}-role-{Name}";
+    public string PolicyName => $"{ProjectPolicy.CustomRolePrefix(Project)}{Name}";
 
     /// <summary>
     /// Builds the policy. Capabilities are grouped by path because KV-v2 splits data
