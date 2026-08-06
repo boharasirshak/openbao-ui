@@ -194,6 +194,7 @@ app.MapDiscoveryEndpoints();
 app.MapShareEndpoints();
 app.MapActivityEndpoints();
 app.MapChangeRequestEndpoints();
+app.MapProjectMemberEndpoints();
 app.MapTeamEndpoints();
 app.MapAccessRoleEndpoints();
 app.MapPermissionEndpoints();

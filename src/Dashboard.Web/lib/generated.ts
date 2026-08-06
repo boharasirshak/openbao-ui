@@ -63,6 +63,18 @@ export interface paths {
       };
     };
   };
+  "/api/admin/projects": {
+    get: {
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ProjectResponse"][];
+          };
+        };
+      };
+    };
+  };
   "/api/shares": {
     post: {
       requestBody: {
@@ -165,18 +177,6 @@ export interface paths {
         /** @description Bad Request */
         400: {
           content: never;
-        };
-      };
-    };
-  };
-  "/api/admin/projects": {
-    get: {
-      responses: {
-        /** @description OK */
-        200: {
-          content: {
-            "application/json": components["schemas"]["ProjectResponse"][];
-          };
         };
       };
     };
@@ -1050,6 +1050,85 @@ export interface paths {
       };
     };
   };
+  "/api/projects/{project}/members": {
+    get: {
+      parameters: {
+        path: {
+          project: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ProjectMemberResponse"][];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/members/options": {
+    get: {
+      parameters: {
+        path: {
+          project: string;
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          content: {
+            "application/json": components["schemas"]["ProjectMemberOptions"];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
+  "/api/projects/{project}/members/{username}": {
+    put: {
+      parameters: {
+        path: {
+          project: string;
+          username: string;
+        };
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["SetProjectRolesRequest"];
+        };
+      };
+      responses: {
+        /** @description No Content */
+        204: {
+          content: never;
+        };
+        /** @description Bad Request */
+        400: {
+          content: never;
+        };
+        /** @description Not Found */
+        404: {
+          content: never;
+        };
+      };
+    };
+  };
   "/api/admin/teams": {
     get: {
       responses: {
@@ -1434,10 +1513,23 @@ export interface components {
       detail?: null | string;
       instance?: null | string;
     };
+    ProjectMemberOptions: {
+      users: string[];
+      roles: components["schemas"]["ProjectRoleOption"][];
+    };
+    ProjectMemberResponse: {
+      username: string;
+      disabled: boolean;
+      roles: components["schemas"]["ProjectRoleOption"][];
+    };
     ProjectResponse: {
       id: string;
       description: string;
       environments: components["schemas"]["EnvironmentResponse"][];
+    };
+    ProjectRoleOption: {
+      policy: string;
+      label: string;
     };
     ReviewChangeRequest: {
       note: null | string;
@@ -1523,6 +1615,9 @@ export interface components {
       expiresAt: string;
       policies?: null | string[];
       username?: null | string;
+    };
+    SetProjectRolesRequest: {
+      policies: string[];
     };
     SetTeamMembersRequest: {
       memberEntityIds: string[];

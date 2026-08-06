@@ -657,3 +657,27 @@ export async function withdrawChange(project: string, id: string): Promise<Chang
   );
   return response.json() as Promise<ChangeRequest>;
 }
+
+/* ---------- per-project members ---------- */
+
+export type ProjectMember = Schemas["ProjectMemberResponse"];
+export type ProjectRoleOption = Schemas["ProjectRoleOption"];
+export type ProjectMemberOptions = Schemas["ProjectMemberOptions"];
+
+export const listProjectMembers = (project: string): Promise<ProjectMember[]> =>
+  read(`/api/projects/${encodeURIComponent(project)}/members`, "The member list is unavailable.");
+
+export const projectMemberOptions = (project: string): Promise<ProjectMemberOptions> =>
+  read(
+    `/api/projects/${encodeURIComponent(project)}/members/options`,
+    "The role options are unavailable.",
+  );
+
+/** An empty list removes the member from the project. Other projects are untouched. */
+export const setProjectRoles = (project: string, username: string, policies: string[]) =>
+  send(
+    `/api/projects/${encodeURIComponent(project)}/members/${encodeURIComponent(username)}`,
+    "PUT",
+    "The member's access could not be changed.",
+    { policies },
+  );

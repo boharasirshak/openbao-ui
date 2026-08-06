@@ -345,7 +345,6 @@ public sealed class OpenBaoProjectService(
         bool readOnly,
         CancellationToken cancellationToken)
     {
-        var suffix = readOnly ? "viewer" : "editor";
         var data = SecretLocation.DataPrefix(project.Value, environment.Value);
         var metadata = SecretLocation.MetadataPrefix(project.Value, environment.Value);
         var policy = $"path \"{data}/*\" {{ capabilities = {(readOnly ? ReadData : WriteData)} }}\n"
@@ -364,7 +363,7 @@ public sealed class OpenBaoProjectService(
         policy += ControlPlaneAccess(project, canWriteChanges: !readOnly);
 
         return client.PutAsync(
-            $"v1/sys/policies/acl/{project}-{environment}-{suffix}",
+            $"v1/sys/policies/acl/{ProjectPolicy.Environment(project, environment, readOnly)}",
             new { policy },
             cancellationToken);
     }
@@ -377,7 +376,7 @@ public sealed class OpenBaoProjectService(
             + $"path \"{SecretLocation.MetadataPrefix(project.Value, "*")}\" {{ capabilities = {OwnMetadata} }}"
             + ControlPlaneAccess(project, canWriteChanges: true);
         return client.PutAsync(
-            $"v1/sys/policies/acl/{project}-admin",
+            $"v1/sys/policies/acl/{ProjectPolicy.Admin(project)}",
             new { policy },
             cancellationToken);
     }

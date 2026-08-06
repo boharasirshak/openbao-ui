@@ -30,7 +30,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import LockIcon from "@mui/icons-material/LockOutlined";
 import BackIcon from "@mui/icons-material/ArrowBackOutlined";
 import SearchIcon from "@mui/icons-material/SearchOutlined";
-import CompareIcon from "@mui/icons-material/DifferenceOutlined";
+import GridIcon from "@mui/icons-material/GridViewOutlined";
 import ApprovalIcon from "@mui/icons-material/RuleOutlined";
 import HistoryIcon from "@mui/icons-material/HistoryOutlined";
 import SettingsIcon from "@mui/icons-material/SettingsOutlined";
@@ -101,13 +101,16 @@ const NAV: { heading: string; items: NavItem[] }[] = [
 
 /** The project's own sections, in the order someone actually reaches for them. */
 const PROJECT_NAV: { slug: string; label: string; icon: ReactNode }[] = [
-  { slug: "compare", label: "Compare", icon: <CompareIcon fontSize="small" /> },
   { slug: "search", label: "Search", icon: <SearchIcon fontSize="small" /> },
   { slug: "changes", label: "Approvals", icon: <ApprovalIcon fontSize="small" /> },
+  { slug: "members", label: "Members", icon: <PeopleIcon fontSize="small" /> },
   { slug: "activity", label: "Activity", icon: <HistoryIcon fontSize="small" /> },
   { slug: "roles", label: "Roles", icon: <ShieldIcon fontSize="small" /> },
   { slug: "settings", label: "Settings", icon: <SettingsIcon fontSize="small" /> },
 ];
+
+/** Path segments under a project that are pages of their own, not overview folders. */
+const PROJECT_SECTIONS = ["environments", "compare", ...PROJECT_NAV.map((item) => item.slug)];
 
 function SidebarHeading({ children }: { children: ReactNode }) {
   return (
@@ -181,6 +184,11 @@ function ProjectNav({
   const root = `/projects/${encodeURIComponent(project)}`;
   // The environment currently open, so the sidebar shows where you are.
   const current = /\/environments\/([^/]+)/.exec(pathname)?.[1];
+  // Overview owns every path that is not one of the named sections.
+  const onOverview =
+    pathname === root ||
+    (pathname.startsWith(`${root}/`) &&
+      !PROJECT_SECTIONS.some((section) => pathname.startsWith(`${root}/${section}`)));
 
   return (
     <>
@@ -197,6 +205,15 @@ function ProjectNav({
         <Typography sx={{ px: 2.5, pt: 1.5, fontWeight: 600 }} noWrap title={project}>
           {project}
         </Typography>
+        <List dense disablePadding sx={{ mt: 0.5 }}>
+          <SidebarItem
+            href={root}
+            label="Overview"
+            icon={<GridIcon fontSize="small" />}
+            selected={onOverview}
+            onNavigate={onNavigate}
+          />
+        </List>
       </Box>
 
       <Box sx={{ mb: 1 }}>
